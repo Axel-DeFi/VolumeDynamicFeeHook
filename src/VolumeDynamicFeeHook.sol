@@ -182,6 +182,27 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 reasonCode;
     }
 
+    /// @notice Working context for the `_afterSwap` orchestrator.
+    /// @dev Holds unpacked state fields and per-call temporaries to reduce stack depth
+    ///      and enable clean decomposition into helper functions.
+    struct AfterSwapCtx {
+        uint64 periodVol;
+        uint96 emaVolScaled;
+        uint64 periodStart;
+        uint8 feeIdx;
+        bool paused;
+        uint8 holdRemaining;
+        uint8 upExtremeStreak;
+        uint8 downStreak;
+        uint8 emergencyStreak;
+        uint24 appliedFee;
+        uint64 nowTs;
+        uint64 elapsed;
+        bool feeChanged;
+        uint64 closeVolForEvent;
+        int128 hookFeeDelta;
+    }
+
     // -----------------------------------------------------------------------
     // Events
     // -----------------------------------------------------------------------
@@ -575,190 +596,221 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     ) internal override returns (bytes4, int128) {
         _validateKey(key);
 
-        (
-            uint64 periodVol,
-            uint96 emaVolScaled,
-            uint64 periodStart,
-            uint8 feeIdx,
-            bool paused_,
-            uint8 holdRemaining,
-            uint8 upExtremeStreak,
-            uint8 downStreak,
-            uint8 emergencyStreak
-        ) = _unpackState(_state);
+        AfterSwapCtx memory ctx = _loadAfterSwapCtx();
 
-        if (periodStart == 0) revert NotInitialized();
-
-        uint24 appliedFeeBips = _modeFee(feeIdx);
-        int128 hookFeeDelta;
-
-        if (paused_) {
-            return (IHooks.afterSwap.selector, hookFeeDelta);
+        if (ctx.paused) {
+            return (IHooks.afterSwap.selector, ctx.hookFeeDelta);
         }
 
-        hookFeeDelta = _accrueHookFeeAfterSwap(key, params, delta, appliedFeeBips);
+        ctx.hookFeeDelta = _accrueHookFeeAfterSwap(key, params, delta, ctx.appliedFee);
 
-        uint64 nowTs = _now64();
-        uint64 elapsed = nowTs - periodStart;
-        bool feeChanged;
-        uint64 closeVolForEvent;
+        if (_handleLullResetIfNeeded(key, delta, ctx)) {
+            return (IHooks.afterSwap.selector, ctx.hookFeeDelta);
+        }
 
-        if (elapsed >= _config.lullResetSeconds) {
-            uint8 oldFeeIdx = feeIdx;
-            uint64 closedPeriodStart = periodStart;
-            uint96 emaBefore = emaVolScaled;
-            uint16 countersBefore = _packControllerTransitionCounters(
-                paused_, holdRemaining, upExtremeStreak, downStreak, emergencyStreak
+        _closeElapsedPeriodsIfNeeded(ctx);
+
+        _finalizeCurrentSwap(key, delta, ctx);
+
+        return (IHooks.afterSwap.selector, ctx.hookFeeDelta);
+    }
+
+    /// @notice Loads unpacked controller state and computes per-call temporaries.
+    /// @dev Pure context preparation with no state mutations.
+    function _loadAfterSwapCtx() internal view returns (AfterSwapCtx memory ctx) {
+        (
+            ctx.periodVol,
+            ctx.emaVolScaled,
+            ctx.periodStart,
+            ctx.feeIdx,
+            ctx.paused,
+            ctx.holdRemaining,
+            ctx.upExtremeStreak,
+            ctx.downStreak,
+            ctx.emergencyStreak
+        ) = _unpackState(_state);
+
+        if (ctx.periodStart == 0) revert NotInitialized();
+
+        ctx.appliedFee = _modeFee(ctx.feeIdx);
+        ctx.nowTs = _now64();
+        ctx.elapsed = ctx.nowTs - ctx.periodStart;
+    }
+
+    /// @notice Handles full state reset triggered by prolonged inactivity.
+    /// @dev When the lull threshold is reached, resets to floor mode, writes `_state`,
+    ///      updates the dynamic LP fee if the mode changed, and emits all relevant events.
+    /// @return handled True if the lull reset was applied and `_afterSwap` should return early.
+    function _handleLullResetIfNeeded(
+        PoolKey calldata key,
+        BalanceDelta delta,
+        AfterSwapCtx memory ctx
+    ) internal returns (bool handled) {
+        if (ctx.elapsed < _config.lullResetSeconds) return false;
+
+        uint8 oldFeeIdx = ctx.feeIdx;
+        uint64 closedPeriodStart = ctx.periodStart;
+        uint96 emaBefore = ctx.emaVolScaled;
+        uint16 countersBefore = _packControllerTransitionCounters(
+            ctx.paused, ctx.holdRemaining, ctx.upExtremeStreak, ctx.downStreak, ctx.emergencyStreak
+        );
+
+        ctx.emaVolScaled = 0;
+        ctx.feeIdx = MODE_FLOOR;
+        ctx.periodStart = ctx.nowTs;
+        ctx.holdRemaining = 0;
+        ctx.upExtremeStreak = 0;
+        ctx.downStreak = 0;
+        ctx.emergencyStreak = 0;
+
+        _activatePendingMinCountedSwapVolume();
+        ctx.periodVol = _addSwapVolumeUsd6(0, delta);
+
+        _state = _packState(
+            ctx.periodVol,
+            ctx.emaVolScaled,
+            ctx.periodStart,
+            ctx.feeIdx,
+            ctx.paused,
+            ctx.holdRemaining,
+            ctx.upExtremeStreak,
+            ctx.downStreak,
+            ctx.emergencyStreak
+        );
+
+        uint24 oldFee = _modeFee(oldFeeIdx);
+        uint24 newFee = _modeFee(ctx.feeIdx);
+        if (ctx.feeIdx != oldFeeIdx) {
+            poolManager.updateDynamicLPFee(key, newFee);
+            emit FeeUpdated(newFee, ctx.feeIdx, 0, 0);
+        }
+
+        emit PeriodClosed(oldFee, oldFeeIdx, newFee, ctx.feeIdx, 0, 0, 0, REASON_LULL_RESET);
+        _emitControllerTransitionTrace(
+            ControllerTransitionTraceData({
+                periodStart: closedPeriodStart,
+                fromFee: oldFee,
+                fromFeeIdx: oldFeeIdx,
+                toFee: newFee,
+                toFeeIdx: ctx.feeIdx,
+                closeVolumeUsd6: 0,
+                emaBeforeUsd6Scaled: emaBefore,
+                emaAfterUsd6Scaled: 0,
+                approxLpFeesUsd6: 0,
+                decisionFlags: 0,
+                countersBefore: countersBefore,
+                countersAfter: _packControllerTransitionCounters(ctx.paused, ctx.holdRemaining, 0, 0, 0),
+                reasonCode: REASON_LULL_RESET
+            })
+        );
+        emit LullReset(newFee, ctx.feeIdx);
+        return true;
+    }
+
+    /// @notice Closes elapsed periods, runs the controller state machine, and emits period-close events.
+    /// @dev Only modifies the in-memory context; does not write `_state`.
+    function _closeElapsedPeriodsIfNeeded(AfterSwapCtx memory ctx) internal {
+        if (ctx.elapsed < _config.periodSeconds) return;
+
+        uint64 periods = ctx.elapsed / uint64(_config.periodSeconds);
+        uint64 closeVol0 = ctx.periodVol;
+        ctx.closeVolForEvent = closeVol0;
+        uint64 periodStart0 = ctx.periodStart;
+
+        uint8 oldFeeIdx = ctx.feeIdx;
+
+        uint96 ema = ctx.emaVolScaled;
+        uint8 f = ctx.feeIdx;
+        uint8 hold = ctx.holdRemaining;
+        uint8 upStreak = ctx.upExtremeStreak;
+        uint8 down = ctx.downStreak;
+        uint8 emergency = ctx.emergencyStreak;
+
+        for (uint64 i = 0; i < periods; ++i) {
+            uint64 closeVol = i == 0 ? closeVol0 : uint64(0);
+            uint64 closedPeriodStart = periodStart0 + i * uint64(_config.periodSeconds);
+            uint16 countersBefore =
+                _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
+
+            uint96 emaBefore = ema;
+            ema = _updateEmaScaled(ema, closeVol);
+            bool bootstrapV2 = emaBefore == 0 && closeVol > 0;
+
+            uint8 fromFeeIdx = f;
+            uint24 fromFee = _modeFee(fromFeeIdx);
+            ControllerTransitionResult memory transition =
+                _computeNextModeV2(f, closeVol, ema, bootstrapV2, hold, upStreak, down, emergency);
+            f = transition.feeIdx;
+            hold = transition.holdRemaining;
+            upStreak = transition.upExtremeStreak;
+            down = transition.downStreak;
+            emergency = transition.emergencyStreak;
+            uint24 toFee = _modeFee(f);
+            uint64 approxLpFeesUsd6 = _estimateApproxLpFeesUsd6(closeVol, fromFee);
+
+            emit PeriodClosed(
+                fromFee, fromFeeIdx, toFee, f, closeVol, ema, approxLpFeesUsd6, transition.reasonCode
             );
-
-            emaVolScaled = 0;
-            feeIdx = MODE_FLOOR;
-            periodStart = nowTs;
-            holdRemaining = 0;
-            upExtremeStreak = 0;
-            downStreak = 0;
-            emergencyStreak = 0;
-
-            _activatePendingMinCountedSwapVolume();
-            periodVol = _addSwapVolumeUsd6(0, delta);
-
-            _state = _packState(
-                periodVol,
-                emaVolScaled,
-                periodStart,
-                feeIdx,
-                paused_,
-                holdRemaining,
-                upExtremeStreak,
-                downStreak,
-                emergencyStreak
-            );
-
-            uint24 oldFee = _modeFee(oldFeeIdx);
-            uint24 newFee = _modeFee(feeIdx);
-            if (feeIdx != oldFeeIdx) {
-                poolManager.updateDynamicLPFee(key, newFee);
-                emit FeeUpdated(newFee, feeIdx, 0, 0);
-            }
-
-            emit PeriodClosed(oldFee, oldFeeIdx, newFee, feeIdx, 0, 0, 0, REASON_LULL_RESET);
             _emitControllerTransitionTrace(
                 ControllerTransitionTraceData({
                     periodStart: closedPeriodStart,
-                    fromFee: oldFee,
-                    fromFeeIdx: oldFeeIdx,
-                    toFee: newFee,
-                    toFeeIdx: feeIdx,
-                    closeVolumeUsd6: 0,
+                    fromFee: fromFee,
+                    fromFeeIdx: fromFeeIdx,
+                    toFee: toFee,
+                    toFeeIdx: f,
+                    closeVolumeUsd6: closeVol,
                     emaBeforeUsd6Scaled: emaBefore,
-                    emaAfterUsd6Scaled: 0,
-                    approxLpFeesUsd6: 0,
-                    decisionFlags: 0,
+                    emaAfterUsd6Scaled: ema,
+                    approxLpFeesUsd6: approxLpFeesUsd6,
+                    decisionFlags: transition.decisionFlags,
                     countersBefore: countersBefore,
-                    countersAfter: _packControllerTransitionCounters(paused_, holdRemaining, 0, 0, 0),
-                    reasonCode: REASON_LULL_RESET
+                    countersAfter: _packControllerTransitionCounters(
+                        ctx.paused, hold, upStreak, down, emergency
+                    ),
+                    reasonCode: transition.reasonCode
                 })
             );
-            emit LullReset(newFee, feeIdx);
-            return (IHooks.afterSwap.selector, hookFeeDelta);
         }
 
-        if (elapsed >= _config.periodSeconds) {
-            uint64 periods = elapsed / uint64(_config.periodSeconds);
-            uint64 closeVol0 = periodVol;
-            closeVolForEvent = closeVol0;
-            uint64 periodStart0 = periodStart;
+        ctx.emaVolScaled = ema;
+        ctx.feeIdx = f;
+        ctx.holdRemaining = hold;
+        ctx.upExtremeStreak = upStreak;
+        ctx.downStreak = down;
+        ctx.emergencyStreak = emergency;
+        ctx.feeChanged = ctx.feeIdx != oldFeeIdx;
 
-            uint8 oldFeeIdx = feeIdx;
+        ctx.periodStart = ctx.periodStart + periods * uint64(_config.periodSeconds);
 
-            uint96 ema = emaVolScaled;
-            uint8 f = feeIdx;
-            uint8 hold = holdRemaining;
-            uint8 upStreak = upExtremeStreak;
-            uint8 down = downStreak;
-            uint8 emergency = emergencyStreak;
+        ctx.periodVol = 0;
+        _activatePendingMinCountedSwapVolume();
+    }
 
-            for (uint64 i = 0; i < periods; ++i) {
-                uint64 closeVol = i == 0 ? closeVol0 : uint64(0);
-                uint64 closedPeriodStart = periodStart0 + i * uint64(_config.periodSeconds);
-                uint16 countersBefore =
-                    _packControllerTransitionCounters(paused_, hold, upStreak, down, emergency);
-
-                uint96 emaBefore = ema;
-                ema = _updateEmaScaled(ema, closeVol);
-                bool bootstrapV2 = emaBefore == 0 && closeVol > 0;
-
-                uint8 fromFeeIdx = f;
-                uint24 fromFee = _modeFee(fromFeeIdx);
-                ControllerTransitionResult memory transition =
-                    _computeNextModeV2(f, closeVol, ema, bootstrapV2, hold, upStreak, down, emergency);
-                f = transition.feeIdx;
-                hold = transition.holdRemaining;
-                upStreak = transition.upExtremeStreak;
-                down = transition.downStreak;
-                emergency = transition.emergencyStreak;
-                uint24 toFee = _modeFee(f);
-                uint64 approxLpFeesUsd6 = _estimateApproxLpFeesUsd6(closeVol, fromFee);
-
-                emit PeriodClosed(
-                    fromFee, fromFeeIdx, toFee, f, closeVol, ema, approxLpFeesUsd6, transition.reasonCode
-                );
-                _emitControllerTransitionTrace(
-                    ControllerTransitionTraceData({
-                        periodStart: closedPeriodStart,
-                        fromFee: fromFee,
-                        fromFeeIdx: fromFeeIdx,
-                        toFee: toFee,
-                        toFeeIdx: f,
-                        closeVolumeUsd6: closeVol,
-                        emaBeforeUsd6Scaled: emaBefore,
-                        emaAfterUsd6Scaled: ema,
-                        approxLpFeesUsd6: approxLpFeesUsd6,
-                        decisionFlags: transition.decisionFlags,
-                        countersBefore: countersBefore,
-                        countersAfter: _packControllerTransitionCounters(
-                            paused_, hold, upStreak, down, emergency
-                        ),
-                        reasonCode: transition.reasonCode
-                    })
-                );
-            }
-
-            emaVolScaled = ema;
-            feeIdx = f;
-            holdRemaining = hold;
-            upExtremeStreak = upStreak;
-            downStreak = down;
-            emergencyStreak = emergency;
-            feeChanged = feeIdx != oldFeeIdx;
-
-            periodStart = periodStart + periods * uint64(_config.periodSeconds);
-
-            periodVol = 0;
-            _activatePendingMinCountedSwapVolume();
-        }
-
-        periodVol = _addSwapVolumeUsd6(periodVol, delta);
+    /// @notice Adds current swap volume, persists packed state, and syncs the dynamic LP fee.
+    function _finalizeCurrentSwap(
+        PoolKey calldata key,
+        BalanceDelta delta,
+        AfterSwapCtx memory ctx
+    ) internal {
+        ctx.periodVol = _addSwapVolumeUsd6(ctx.periodVol, delta);
 
         _state = _packState(
-            periodVol,
-            emaVolScaled,
-            periodStart,
-            feeIdx,
-            paused_,
-            holdRemaining,
-            upExtremeStreak,
-            downStreak,
-            emergencyStreak
+            ctx.periodVol,
+            ctx.emaVolScaled,
+            ctx.periodStart,
+            ctx.feeIdx,
+            ctx.paused,
+            ctx.holdRemaining,
+            ctx.upExtremeStreak,
+            ctx.downStreak,
+            ctx.emergencyStreak
         );
 
-        if (feeChanged) {
-            uint24 activeFee = _modeFee(feeIdx);
+        if (ctx.feeChanged) {
+            uint24 activeFee = _modeFee(ctx.feeIdx);
             poolManager.updateDynamicLPFee(key, activeFee);
-            emit FeeUpdated(activeFee, feeIdx, closeVolForEvent, emaVolScaled);
+            emit FeeUpdated(activeFee, ctx.feeIdx, ctx.closeVolForEvent, ctx.emaVolScaled);
         }
-
-        return (IHooks.afterSwap.selector, hookFeeDelta);
     }
 
     // -----------------------------------------------------------------------
