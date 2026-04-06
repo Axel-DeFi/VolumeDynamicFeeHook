@@ -32,13 +32,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Scaler used for EMA precision. Stored EMA units are USD6 * EMA_SCALE.
     uint256 private constant EMA_SCALE = 1_000_000;
 
-    /// @notice Hard maximum for HookFee share as a percent of LP fee.
+    /// @notice Hard maximum for the hook fee percent used by the hook settlement formula.
     uint16 public constant MAX_HOOK_FEE_PERCENT = 10;
 
     /// @notice Maximum single settlement amount accepted by PoolManager burn/take accounting.
     uint256 private constant MAX_POOLMANAGER_SETTLEMENT_AMOUNT = uint256(uint128(type(int128).max));
 
-    /// @notice Delay for HookFee percent changes.
+    /// @notice Timelock delay for hook fee percent parameter changes.
     uint64 public constant HOOK_FEE_PERCENT_CHANGE_DELAY = 48 hours;
 
     /// @notice Default minimum swap notional counted into period volume telemetry.
@@ -271,13 +271,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Emitted when timing and smoothing params are updated.
     event TimingParamsUpdated(uint32 periodSeconds, uint8 emaPeriods, uint32 lullResetSeconds);
 
-    /// @notice Emitted when a HookFee percent change is scheduled through timelock.
+    /// @notice Emitted when a hook fee percent change is scheduled through timelock.
     event HookFeePercentChangeScheduled(uint16 newHookFeePercent, uint64 executeAfter);
 
-    /// @notice Emitted when scheduled HookFee percent change is cancelled.
+    /// @notice Emitted when scheduled hook fee percent change is cancelled.
     event HookFeePercentChangeCancelled(uint16 cancelledHookFeePercent);
 
-    /// @notice Emitted when HookFee percent is executed and applied.
+    /// @notice Emitted when hook fee percent is executed and applied.
     event HookFeePercentChanged(uint16 oldHookFeePercent, uint16 newHookFeePercent);
 
     /// @notice Emitted when min counted swap threshold update is scheduled.
@@ -397,7 +397,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @param _emaPeriods EMA denominator.
     /// @param _lullResetSeconds Lull-reset inactivity threshold in seconds. Must be strictly greater than `_periodSeconds`.
     /// @param ownerAddr Initial owner address.
-    /// @param hookFeePercent_ Initial HookFee percent of LP fee.
+    /// @param hookFeePercent_ Initial hook fee percent used by the hook settlement formula.
     /// @param _floorToCashMinCloseVolume Minimum close volume for floor->cash transition.
     /// @param _floorToCashMinFlowBps Close-volume trigger for floor->cash transition, as `closeVol / EMA` in bps.
     /// @param _cashHoldPeriods Configured cash hold length `N`. Hold blocks only the ordinary cash->floor path, emergency
@@ -905,7 +905,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return _pendingOwner;
     }
 
-    /// @notice Returns current HookFee percent of LP fee.
+    /// @notice Returns current hook fee percent used by the hook settlement formula.
     function hookFeePercent() public view returns (uint16) {
         return _config.hookFeePercent;
     }
@@ -1553,9 +1553,11 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         revert InvalidConfig();
     }
 
-    /// @notice Accrues per-swap HookFee from an approximate LP-fee estimate.
+    /// @notice Accrues per-swap hook fee from swap settlement data using the active fee tier.
     /// @dev Estimation uses the unspecified side selected by the current exact-input/exact-output execution path.
     /// @dev Small systematic deviations between exact-input and exact-output paths are expected by design.
+    /// @dev Hook fee is derived from swap settlement data and the active fee tier.
+    /// @dev The configured hookFeePercent is a hook-specific calculation parameter and should not be interpreted as a literal share of separately observed LP fees.
     function _accrueHookFeeAfterSwap(
         PoolKey calldata key,
         SwapParams calldata params,
