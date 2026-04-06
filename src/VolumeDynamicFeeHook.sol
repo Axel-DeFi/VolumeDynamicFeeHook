@@ -166,7 +166,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint16 decisionFlags;
     }
 
-    struct ControllerTransitionTraceData {
+    struct PeriodTrace {
         uint64 periodStart;
         uint24 fromFee;
         uint8 fromFeeIdx;
@@ -682,12 +682,11 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint24 newFee = _modeFee(ctx.feeIdx);
         if (ctx.feeIdx != oldFeeIdx) {
             poolManager.updateDynamicLPFee(key, newFee);
-            emit FeeUpdated(newFee, ctx.feeIdx, 0, 0);
+            _emitFeeUpdate(newFee, ctx.feeIdx, 0, 0);
         }
 
-        emit PeriodClosed(oldFee, oldFeeIdx, newFee, ctx.feeIdx, 0, 0, 0, REASON_LULL_RESET);
-        _emitControllerTransitionTrace(
-            ControllerTransitionTraceData({
+        _emitPeriodTrace(
+            PeriodTrace({
                 periodStart: closedPeriodStart,
                 fromFee: oldFee,
                 fromFeeIdx: oldFeeIdx,
@@ -732,36 +731,29 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             uint16 countersBefore =
                 _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
 
-            uint96 emaBefore = ema;
-            ema = _updateEmaScaled(ema, closeVol);
-            bool bootstrapV2 = emaBefore == 0 && closeVol > 0;
-
             uint8 fromFeeIdx = f;
             uint24 fromFee = _modeFee(fromFeeIdx);
-            ControllerTransitionResult memory transition =
-                _computeNextModeV2(f, closeVol, ema, bootstrapV2, hold, upStreak, down, emergency);
+
+            (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory transition) =
+                _stepController(ema, f, closeVol, hold, upStreak, down, emergency);
+            ema = emaAfter;
             f = transition.feeIdx;
             hold = transition.holdRemaining;
             upStreak = transition.upExtremeStreak;
             down = transition.downStreak;
             emergency = transition.emergencyStreak;
-            uint24 toFee = _modeFee(f);
-            uint64 approxLpFeesUsd6 = _estimateApproxLpFeesUsd6(closeVol, fromFee);
 
-            emit PeriodClosed(
-                fromFee, fromFeeIdx, toFee, f, closeVol, ema, approxLpFeesUsd6, transition.reasonCode
-            );
-            _emitControllerTransitionTrace(
-                ControllerTransitionTraceData({
+            _emitPeriodTrace(
+                PeriodTrace({
                     periodStart: closedPeriodStart,
                     fromFee: fromFee,
                     fromFeeIdx: fromFeeIdx,
-                    toFee: toFee,
+                    toFee: _modeFee(f),
                     toFeeIdx: f,
                     closeVolumeUsd6: closeVol,
                     emaBeforeUsd6Scaled: emaBefore,
                     emaAfterUsd6Scaled: ema,
-                    approxLpFeesUsd6: approxLpFeesUsd6,
+                    approxLpFeesUsd6: _estimateApproxLpFeesUsd6(closeVol, fromFee),
                     decisionFlags: transition.decisionFlags,
                     countersBefore: countersBefore,
                     countersAfter: _packControllerTransitionCounters(
@@ -809,7 +801,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (ctx.feeChanged) {
             uint24 activeFee = _modeFee(ctx.feeIdx);
             poolManager.updateDynamicLPFee(key, activeFee);
-            emit FeeUpdated(activeFee, ctx.feeIdx, ctx.closeVolForEvent, ctx.emaVolScaled);
+            _emitFeeUpdate(activeFee, ctx.feeIdx, ctx.closeVolForEvent, ctx.emaVolScaled);
         }
     }
 
@@ -1619,33 +1611,54 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint16 hookFeePct = _config.hookFeePercent;
         if (hookFeePct == 0) return 0;
 
-        bool specifiedTokenIs0 = (params.amountSpecified < 0) == params.zeroForOne;
-        Currency unspecifiedCurrency = specifiedTokenIs0 ? key.currency1 : key.currency0;
-        int128 unspecifiedAmountSigned = specifiedTokenIs0 ? delta.amount1() : delta.amount0();
-
-        uint256 absUnspecified = unspecifiedAmountSigned < 0
-            ? uint256(-int256(unspecifiedAmountSigned))
-            : uint256(uint128(unspecifiedAmountSigned));
+        (Currency unspecifiedCurrency, uint256 absUnspecified) = _hookFeeBase(key, params, delta);
         if (absUnspecified == 0) return 0;
 
-        uint256 lpFeeAmount = (absUnspecified * uint256(appliedFeeBips)) / FEE_SCALE;
-        uint256 hookFeeAmount = (lpFeeAmount * uint256(hookFeePct)) / 100;
-        if (hookFeeAmount == 0) return 0;
+        uint256 amount = _hookFeeAmount(absUnspecified, appliedFeeBips, hookFeePct);
+        if (amount == 0) return 0;
 
+        _creditHookFee(unspecifiedCurrency, amount);
+        return int128(uint128(amount));
+    }
+
+    /// @notice Determines the unspecified currency and its absolute amount for hook fee calculation.
+    /// @dev Selects the unspecified side based on the swap execution path (exact-input vs exact-output).
+    function _hookFeeBase(
+        PoolKey calldata key,
+        SwapParams calldata params,
+        BalanceDelta delta
+    ) internal pure returns (Currency unspecifiedCurrency, uint256 absUnspecified) {
+        bool specifiedTokenIs0 = (params.amountSpecified < 0) == params.zeroForOne;
+        unspecifiedCurrency = specifiedTokenIs0 ? key.currency1 : key.currency0;
+        int128 unspecifiedAmountSigned = specifiedTokenIs0 ? delta.amount1() : delta.amount0();
+        absUnspecified = unspecifiedAmountSigned < 0
+            ? uint256(-int256(unspecifiedAmountSigned))
+            : uint256(uint128(unspecifiedAmountSigned));
+    }
+
+    /// @notice Computes hook fee from the unspecified-side base and active fee tier.
+    /// @dev Formula: `(absUnspecified * appliedFeeBips / FEE_SCALE) * hookFeePct / 100`.
+    function _hookFeeAmount(
+        uint256 absUnspecified,
+        uint24 appliedFeeBips,
+        uint16 hookFeePct
+    ) internal pure returns (uint256 hookFeeAmount) {
+        uint256 lpFeeAmount = (absUnspecified * uint256(appliedFeeBips)) / FEE_SCALE;
+        hookFeeAmount = (lpFeeAmount * uint256(hookFeePct)) / 100;
         if (hookFeeAmount > uint256(uint128(type(int128).max))) {
             hookFeeAmount = uint256(uint128(type(int128).max));
         }
+    }
 
+    /// @notice Records hook fee in internal accounting and mints ERC6909 claim in PoolManager.
+    function _creditHookFee(Currency unspecifiedCurrency, uint256 hookFeeAmount) internal {
         if (unspecifiedCurrency == poolCurrency0) {
             _hookFees0 += hookFeeAmount;
         } else {
             _hookFees1 += hookFeeAmount;
         }
-
         // Persist claimable balance in PoolManager ERC6909 accounting during the same unlocked swap context.
         poolManager.mint(address(this), unspecifiedCurrency.toId(), hookFeeAmount);
-
-        return int128(uint128(hookFeeAmount));
     }
 
     function _addSwapVolumeUsd6(uint64 current, BalanceDelta delta) internal view returns (uint64) {
@@ -1687,7 +1700,27 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return uint64(fees);
     }
 
-    function _emitControllerTransitionTrace(ControllerTransitionTraceData memory trace) internal {
+    /// @notice Emits both `PeriodClosed` and `ControllerTransitionTrace` for a closed period.
+    function _emitPeriodTrace(PeriodTrace memory trace) internal {
+        emit PeriodClosed(
+            trace.fromFee,
+            trace.fromFeeIdx,
+            trace.toFee,
+            trace.toFeeIdx,
+            trace.closeVolumeUsd6,
+            trace.emaAfterUsd6Scaled,
+            trace.approxLpFeesUsd6,
+            trace.reasonCode
+        );
+        _emitControllerTransitionTrace(trace);
+    }
+
+    /// @notice Emits `FeeUpdated` event.
+    function _emitFeeUpdate(uint24 fee, uint8 feeIdx, uint64 closeVolumeUsd6, uint96 emaVolumeUsd6Scaled) internal {
+        emit FeeUpdated(fee, feeIdx, closeVolumeUsd6, emaVolumeUsd6Scaled);
+    }
+
+    function _emitControllerTransitionTrace(PeriodTrace memory trace) internal {
         emit ControllerTransitionTrace(
             trace.periodStart,
             trace.fromFee,
@@ -1721,6 +1754,29 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
     function _incrementStreak(uint8 current, uint8 maxValue) internal pure returns (uint8) {
         return current < maxValue ? current + 1 : maxValue;
+    }
+
+    /// @notice Runs one controller step: updates EMA and computes mode transition.
+    /// @dev No state mutations; returns updated EMA and transition result.
+    function _stepController(
+        uint96 ema,
+        uint8 feeIdx,
+        uint64 closeVol,
+        uint8 holdRemaining,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    )
+        internal
+        view
+        returns (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory transition)
+    {
+        emaBefore = ema;
+        emaAfter = _updateEmaScaled(ema, closeVol);
+        bool bootstrapV2 = emaBefore == 0 && closeVol > 0;
+        transition = _computeNextModeV2(
+            feeIdx, closeVol, emaAfter, bootstrapV2, holdRemaining, upExtremeStreak, downStreak, emergencyStreak
+        );
     }
 
     /// @notice Computes the next LP-fee mode and transition counters for a closed period.
