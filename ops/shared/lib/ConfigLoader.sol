@@ -1,0 +1,415 @@
+// SPDX-License-Identifier: LicenseRef-Audit-Only-Source-Available-1.0
+pragma solidity ^0.8.26;
+
+import {OpsTypes} from "../types/OpsTypes.sol";
+import {Vm} from "forge-std/Vm.sol";
+
+import {EnvLib} from "./EnvLib.sol";
+import {ErrorLib} from "./ErrorLib.sol";
+
+library ConfigLoader {
+    Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    uint64 internal constant DEFAULT_MIN_COUNTED_SWAP_VOLUME = 4_000_000;
+
+    function loadCoreConfig() internal view returns (OpsTypes.CoreConfig memory cfg) {
+        cfg.runtime = _loadRuntime();
+        cfg.rpcUrl = EnvLib.envOrString("RPC_URL", "");
+        cfg.chainIdExpected = EnvLib.envOrUint("CHAIN_ID_EXPECTED", block.chainid);
+        cfg.broadcast = EnvLib.envOrBool("OPS_BROADCAST", false);
+
+        cfg.privateKey = EnvLib.envOrUint("PRIVATE_KEY", 0);
+        if (cfg.privateKey != 0) {
+            cfg.deployer = vm.addr(cfg.privateKey);
+        } else {
+            cfg.deployer = EnvLib.envOrAddress("DEPLOYER", address(0));
+        }
+
+        cfg.poolManager = _requireAddressEither("POOL_MANAGER", "DEPLOY_POOL_MANAGER", false);
+        cfg.hookAddress = EnvLib.envOrAddress("HOOK_ADDRESS", address(0));
+        cfg.poolId = EnvLib.envOrBytes32("POOL_ID", bytes32(0));
+
+        cfg.volatileToken = _requireAddressEither("VOLATILE", "DEPLOY_VOLATILE", true);
+        cfg.stableToken = _requireAddressEither("STABLE", "DEPLOY_STABLE", false);
+        if (cfg.stableToken == cfg.volatileToken) {
+            revert ErrorLib.InvalidEnv("VOLATILE/STABLE", "tokens must differ");
+        }
+
+        (cfg.token0, cfg.token1) = sortPair(cfg.volatileToken, cfg.stableToken);
+
+        cfg.stableDecimals = _resolveRuntimeStableDecimals(cfg.runtime, cfg.stableToken);
+
+        cfg.tickSpacing = _requirePositiveInt24Either("TICK_SPACING", "DEPLOY_TICK_SPACING");
+        if (cfg.tickSpacing <= 0) {
+            revert ErrorLib.InvalidEnv("TICK_SPACING", "must be > 0");
+        }
+
+        cfg.owner = EnvLib.hasKey("OWNER")
+            ? EnvLib.requireAddress("OWNER", false)
+            : EnvLib.hasKey("DEPLOY_OWNER") ? EnvLib.requireAddress("DEPLOY_OWNER", false) : cfg.deployer;
+        if (cfg.owner == address(0)) {
+            revert ErrorLib.InvalidEnv("OWNER", "zero address");
+        }
+
+        cfg.floorFeePips = _requirePipsFromPercentEither("FLOOR_FEE_PERCENT", "DEPLOY_FLOOR_FEE_PERCENT");
+        cfg.cashFeePips = _requirePipsFromPercentEither("CASH_FEE_PERCENT", "DEPLOY_CASH_FEE_PERCENT");
+        cfg.extremeFeePips =
+            _requirePipsFromPercentEither("EXTREME_FEE_PERCENT", "DEPLOY_EXTREME_FEE_PERCENT");
+        cfg.periodSeconds = _requireUint32Either("PERIOD_SECONDS", "DEPLOY_PERIOD_SECONDS");
+        cfg.emaPeriods = _requireUint8Either("EMA_PERIODS", "DEPLOY_EMA_PERIODS");
+        cfg.lullResetSeconds = _requireUint32Either("LULL_RESET_SECONDS", "DEPLOY_LULL_RESET_SECONDS");
+        cfg.hookFeePercent = _requireUint16Either("HOOK_FEE_PERCENT", "DEPLOY_HOOK_FEE_PERCENT");
+        cfg.minCountedSwapVolume = EnvLib.envOrUint64("MIN_COUNTED_SWAP_VOLUME", DEFAULT_MIN_COUNTED_SWAP_VOLUME);
+        if (cfg.minCountedSwapVolume < 1_000_000 || cfg.minCountedSwapVolume > 10_000_000) {
+            revert ErrorLib.InvalidEnv("MIN_COUNTED_SWAP_VOLUME", "must be in 1000000..10000000");
+        }
+        cfg.floorToCashMinCloseVolume =
+            _requireUint64Either("FLOOR_TO_CASH_MIN_CLOSE_VOLUME", "DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME");
+        cfg.floorToCashMinFlowBps =
+            _requireBpsFromMultiplierXEither(
+                "FLOOR_TO_CASH_MIN_FLOW_EMA_X", "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X"
+            );
+        cfg.cashHoldPeriods = _requireUint8Either("CASH_HOLD_PERIODS", "DEPLOY_CASH_HOLD_PERIODS");
+        cfg.cashToExtremeMinCloseVolume = _requireUint64Either(
+            "CASH_TO_EXTREME_MIN_CLOSE_VOLUME", "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME"
+        );
+        cfg.cashToExtremeMinFlowBps = _requireBpsFromMultiplierXEither(
+            "CASH_TO_EXTREME_MIN_FLOW_EMA_X", "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X"
+        );
+        cfg.cashToExtremeConfirmPeriods =
+            _requireUint8Either("CASH_TO_EXTREME_CONFIRM_PERIODS", "DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS");
+        cfg.extremeHoldPeriods = _requireUint8Either("EXTREME_HOLD_PERIODS", "DEPLOY_EXTREME_HOLD_PERIODS");
+        cfg.extremeToCashMaxFlowBps = _requireBpsFromMultiplierXEither(
+            "EXTREME_TO_CASH_MAX_FLOW_EMA_X", "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X"
+        );
+        cfg.extremeToCashConfirmPeriods =
+            _requireUint8Either("EXTREME_TO_CASH_CONFIRM_PERIODS", "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS");
+        cfg.cashToFloorMaxFlowBps =
+            _requireBpsFromMultiplierXEither("CASH_TO_FLOOR_MAX_FLOW_EMA_X", "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X");
+        cfg.cashToFloorConfirmPeriods =
+            _requireUint8Either("CASH_TO_FLOOR_CONFIRM_PERIODS", "DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS");
+        cfg.emergencyToFloorMaxCloseVolume =
+            _requireUint64Either(
+                "EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME", "DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME"
+            );
+        cfg.emergencyToFloorConfirmPeriods =
+            _requireUint8Either(
+                "EMERGENCY_TO_FLOOR_CONFIRM_PERIODS", "DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS"
+            );
+
+        cfg.initPriceUsdE18 = EnvLib.envOrDecimalE18("INIT_PRICE_USD", 0);
+
+        cfg.minEthBalanceWei = EnvLib.envOrUint("BUDGET_MIN_ETH_WEI", 0);
+        cfg.minStableBalanceRaw = EnvLib.envOrUint("BUDGET_MIN_STABLE_RAW", 0);
+        cfg.minVolatileBalanceRaw = EnvLib.envOrUint("BUDGET_MIN_VOLATILE_RAW", 0);
+
+        cfg.liquidityBudgetStableRaw = EnvLib.envOrUint("BUDGET_LIQ_STABLE_RAW", 0);
+        cfg.liquidityBudgetVolatileRaw = EnvLib.envOrUint("BUDGET_LIQ_VOLATILE_RAW", 0);
+        cfg.swapBudgetStableRaw = EnvLib.envOrUint("BUDGET_SWAP_STABLE_RAW", 0);
+        cfg.swapBudgetVolatileRaw = EnvLib.envOrUint("BUDGET_SWAP_VOLATILE_RAW", 0);
+        cfg.safetyBufferEthWei = EnvLib.envOrUint("BUDGET_SAFETY_BUFFER_ETH_WEI", 0);
+    }
+
+    function validateChainId(uint256 expectedChainId) internal view {
+        if (expectedChainId != block.chainid) {
+            revert ErrorLib.ChainIdMismatch(expectedChainId, block.chainid);
+        }
+    }
+
+    function loadDeploymentConfig(OpsTypes.CoreConfig memory runtimeCfg)
+        internal
+        view
+        returns (OpsTypes.DeploymentConfig memory cfg)
+    {
+        bool strict = runtimeCfg.runtime == OpsTypes.Runtime.Live;
+
+        cfg.poolManager = strict
+            ? EnvLib.requireAddress("DEPLOY_POOL_MANAGER", false)
+            : EnvLib.envOrAddress("DEPLOY_POOL_MANAGER", runtimeCfg.poolManager);
+
+        address deployVolatile = strict
+            ? EnvLib.requireAddress("DEPLOY_VOLATILE", true)
+            : EnvLib.envOrAddress("DEPLOY_VOLATILE", runtimeCfg.volatileToken);
+        cfg.stableToken = strict
+            ? EnvLib.requireAddress("DEPLOY_STABLE", false)
+            : EnvLib.envOrAddress("DEPLOY_STABLE", runtimeCfg.stableToken);
+        if (deployVolatile == cfg.stableToken) {
+            revert ErrorLib.InvalidEnv("DEPLOY_VOLATILE/DEPLOY_STABLE", "tokens must differ");
+        }
+        (cfg.token0, cfg.token1) = sortPair(deployVolatile, cfg.stableToken);
+
+        cfg.stableDecimals =
+            _resolveDeploymentStableDecimals(runtimeCfg.runtime, cfg.stableToken, runtimeCfg.stableDecimals);
+
+        cfg.tickSpacing = strict
+            ? EnvLib.requirePositiveInt24("DEPLOY_TICK_SPACING")
+            : EnvLib.envOrPositiveInt24("DEPLOY_TICK_SPACING", runtimeCfg.tickSpacing);
+        if (cfg.tickSpacing <= 0) {
+            revert ErrorLib.InvalidEnv("DEPLOY_TICK_SPACING", "must be > 0");
+        }
+
+        cfg.owner = strict
+            ? EnvLib.requireAddress("DEPLOY_OWNER", false)
+            : EnvLib.envOrAddress("DEPLOY_OWNER", runtimeCfg.owner);
+        cfg.floorFeePips = strict
+            ? EnvLib.requirePipsFromPercent("DEPLOY_FLOOR_FEE_PERCENT")
+            : EnvLib.envOrPipsFromPercent("DEPLOY_FLOOR_FEE_PERCENT", runtimeCfg.floorFeePips);
+        cfg.cashFeePips = strict
+            ? EnvLib.requirePipsFromPercent("DEPLOY_CASH_FEE_PERCENT")
+            : EnvLib.envOrPipsFromPercent("DEPLOY_CASH_FEE_PERCENT", runtimeCfg.cashFeePips);
+        cfg.extremeFeePips = strict
+            ? EnvLib.requirePipsFromPercent("DEPLOY_EXTREME_FEE_PERCENT")
+            : EnvLib.envOrPipsFromPercent("DEPLOY_EXTREME_FEE_PERCENT", runtimeCfg.extremeFeePips);
+        cfg.periodSeconds = strict
+            ? EnvLib.requireUint32("DEPLOY_PERIOD_SECONDS")
+            : EnvLib.envOrUint32("DEPLOY_PERIOD_SECONDS", runtimeCfg.periodSeconds);
+        cfg.emaPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_EMA_PERIODS")
+            : EnvLib.envOrUint8("DEPLOY_EMA_PERIODS", runtimeCfg.emaPeriods);
+        cfg.lullResetSeconds = strict
+            ? EnvLib.requireUint32("DEPLOY_LULL_RESET_SECONDS")
+            : EnvLib.envOrUint32("DEPLOY_LULL_RESET_SECONDS", runtimeCfg.lullResetSeconds);
+        cfg.hookFeePercent = strict
+            ? EnvLib.requireUint16("DEPLOY_HOOK_FEE_PERCENT")
+            : EnvLib.envOrUint16("DEPLOY_HOOK_FEE_PERCENT", runtimeCfg.hookFeePercent);
+        cfg.floorToCashMinCloseVolume = strict
+            ? EnvLib.requireUint64("DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME")
+            : EnvLib.envOrUint64("DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME", runtimeCfg.floorToCashMinCloseVolume);
+        cfg.floorToCashMinFlowBps = strict
+            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X")
+            : EnvLib.envOrBpsFromMultiplierX(
+                    "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X", runtimeCfg.floorToCashMinFlowBps
+                );
+        cfg.cashHoldPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_CASH_HOLD_PERIODS")
+            : EnvLib.envOrUint8("DEPLOY_CASH_HOLD_PERIODS", runtimeCfg.cashHoldPeriods);
+        cfg.cashToExtremeMinCloseVolume = strict
+            ? EnvLib.requireUint64("DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME")
+            : EnvLib.envOrUint64(
+                "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME", runtimeCfg.cashToExtremeMinCloseVolume
+            );
+        cfg.cashToExtremeMinFlowBps = strict
+            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X")
+            : EnvLib.envOrBpsFromMultiplierX(
+                "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X", runtimeCfg.cashToExtremeMinFlowBps
+            );
+        cfg.cashToExtremeConfirmPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS")
+            : EnvLib.envOrUint8(
+                "DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS", runtimeCfg.cashToExtremeConfirmPeriods
+            );
+        cfg.extremeHoldPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_EXTREME_HOLD_PERIODS")
+            : EnvLib.envOrUint8("DEPLOY_EXTREME_HOLD_PERIODS", runtimeCfg.extremeHoldPeriods);
+        cfg.extremeToCashMaxFlowBps = strict
+            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X")
+            : EnvLib.envOrBpsFromMultiplierX(
+                "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X", runtimeCfg.extremeToCashMaxFlowBps
+            );
+        cfg.extremeToCashConfirmPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS")
+            : EnvLib.envOrUint8(
+                "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS", runtimeCfg.extremeToCashConfirmPeriods
+            );
+        cfg.cashToFloorMaxFlowBps = strict
+            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X")
+            : EnvLib.envOrBpsFromMultiplierX(
+                "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X", runtimeCfg.cashToFloorMaxFlowBps
+            );
+        cfg.cashToFloorConfirmPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS")
+            : EnvLib.envOrUint8(
+                "DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS", runtimeCfg.cashToFloorConfirmPeriods
+            );
+        cfg.emergencyToFloorMaxCloseVolume = strict
+            ? EnvLib.requireUint64("DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME")
+            : EnvLib.envOrUint64(
+                "DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME", runtimeCfg.emergencyToFloorMaxCloseVolume
+            );
+        cfg.emergencyToFloorConfirmPeriods = strict
+            ? EnvLib.requireUint8("DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS")
+            : EnvLib.envOrUint8(
+                "DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS", runtimeCfg.emergencyToFloorConfirmPeriods
+            );
+    }
+
+    function requireDeploymentBindingConsistency(
+        OpsTypes.CoreConfig memory runtimeCfg,
+        OpsTypes.DeploymentConfig memory deployCfg
+    ) internal pure {
+        if (runtimeCfg.poolManager != deployCfg.poolManager) {
+            revert ErrorLib.InvalidEnv("POOL_MANAGER", "must match DEPLOY_POOL_MANAGER");
+        }
+        if (runtimeCfg.token0 != deployCfg.token0 || runtimeCfg.token1 != deployCfg.token1) {
+            revert ErrorLib.InvalidEnv("VOLATILE/STABLE", "must match DEPLOY_VOLATILE/DEPLOY_STABLE");
+        }
+        if (runtimeCfg.stableToken != deployCfg.stableToken) {
+            revert ErrorLib.InvalidEnv("STABLE", "must match DEPLOY_STABLE");
+        }
+        if (runtimeCfg.stableDecimals != deployCfg.stableDecimals) {
+            revert ErrorLib.InvalidEnv("STABLE_DECIMALS", "must match stable token decimals");
+        }
+        if (runtimeCfg.tickSpacing != deployCfg.tickSpacing) {
+            revert ErrorLib.InvalidEnv("TICK_SPACING", "must match DEPLOY_TICK_SPACING");
+        }
+    }
+
+    function sortPair(address a, address b) internal pure returns (address token0, address token1) {
+        if (a < b) {
+            return (a, b);
+        }
+        return (b, a);
+    }
+
+    function _loadRuntime() private view returns (OpsTypes.Runtime runtime) {
+        string memory raw = EnvLib.envOrString("OPS_RUNTIME", "local");
+        bytes32 id = keccak256(bytes(_lower(raw)));
+        if (id == keccak256("local")) {
+            return OpsTypes.Runtime.Local;
+        }
+        return OpsTypes.Runtime.Live;
+    }
+
+    function _lower(string memory s) private pure returns (string memory) {
+        bytes memory b = bytes(s);
+        for (uint256 i = 0; i < b.length; i++) {
+            if (b[i] >= 0x41 && b[i] <= 0x5A) {
+                b[i] = bytes1(uint8(b[i]) + 32);
+            }
+        }
+        return string(b);
+    }
+
+    function _requireAddressEither(string memory key, string memory fallbackKey, bool allowZero)
+        private
+        view
+        returns (address)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requireAddress(key, allowZero);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireAddress(fallbackKey, allowZero);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _requireUint8Either(string memory key, string memory fallbackKey) private view returns (uint8) {
+        if (EnvLib.hasKey(key)) return EnvLib.requireUint8(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireUint8(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _resolveRuntimeStableDecimals(OpsTypes.Runtime runtime, address stableToken)
+        private
+        view
+        returns (uint8)
+    {
+        if (EnvLib.hasKey("STABLE_DECIMALS")) {
+            return _requireSupportedStableDecimals(EnvLib.requireUint8("STABLE_DECIMALS"), "STABLE_DECIMALS");
+        }
+        if (stableToken.code.length > 0) {
+            return _readSupportedStableDecimals(stableToken, "STABLE");
+        }
+        if (runtime == OpsTypes.Runtime.Local) {
+            return 6;
+        }
+        revert ErrorLib.InvalidEnv("STABLE", "token has no code and STABLE_DECIMALS missing");
+    }
+
+    function _resolveDeploymentStableDecimals(
+        OpsTypes.Runtime runtime,
+        address stableToken,
+        uint8 fallbackStableDecimals
+    ) private view returns (uint8) {
+        if (stableToken.code.length > 0) {
+            return _readSupportedStableDecimals(stableToken, "DEPLOY_STABLE");
+        }
+        if (runtime == OpsTypes.Runtime.Local) {
+            return fallbackStableDecimals;
+        }
+        revert ErrorLib.InvalidEnv("DEPLOY_STABLE", "token has no code");
+    }
+
+    function _requireUint16Either(string memory key, string memory fallbackKey)
+        private
+        view
+        returns (uint16)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requireUint16(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireUint16(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _requireUint32Either(string memory key, string memory fallbackKey)
+        private
+        view
+        returns (uint32)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requireUint32(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireUint32(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _requirePositiveInt24Either(string memory key, string memory fallbackKey)
+        private
+        view
+        returns (int24)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requirePositiveInt24(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requirePositiveInt24(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _requirePipsFromPercentEither(string memory key, string memory fallbackKey)
+        private
+        view
+        returns (uint24)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requirePipsFromPercent(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requirePipsFromPercent(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _requireUint64Either(string memory key, string memory fallbackKey)
+        private
+        view
+        returns (uint64)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requireUint64(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireUint64(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _requireBpsFromMultiplierXEither(string memory key, string memory fallbackKey)
+        private
+        view
+        returns (uint16)
+    {
+        if (EnvLib.hasKey(key)) return EnvLib.requireBpsFromMultiplierX(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireBpsFromMultiplierX(fallbackKey);
+        revert ErrorLib.MissingEnv(key);
+    }
+
+    function _readSupportedStableDecimals(address token, string memory key)
+        private
+        view
+        returns (uint8 stableDecimals)
+    {
+        try IERC20MetadataLike(token).decimals() returns (uint8 decimals_) {
+            stableDecimals = _requireSupportedStableDecimals(decimals_, key);
+        } catch {
+            revert ErrorLib.InvalidEnv(key, "decimals() query failed");
+        }
+    }
+
+    function _requireSupportedStableDecimals(uint8 stableDecimals, string memory key)
+        private
+        pure
+        returns (uint8)
+    {
+        if (stableDecimals != 6 && stableDecimals != 18) {
+            revert ErrorLib.InvalidEnv(key, "must be 6 or 18");
+        }
+        return stableDecimals;
+    }
+}
+
+interface IERC20MetadataLike {
+    function decimals() external view returns (uint8);
+}

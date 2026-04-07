@@ -1,0 +1,341 @@
+// SPDX-License-Identifier: LicenseRef-Audit-Only-Source-Available-1.0
+pragma solidity ^0.8.26;
+
+import {Vm} from "forge-std/Vm.sol";
+
+import {ErrorLib} from "./ErrorLib.sol";
+
+library EnvLib {
+    Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    function hasKey(string memory key) internal view returns (bool) {
+        try vm.envString(key) returns (string memory value) {
+            return bytes(value).length != 0;
+        } catch {
+            return false;
+        }
+    }
+
+    function requireAddress(string memory key, bool allowZero) internal view returns (address value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        value = _parseAddress(vm.envString(key), key);
+        if (!allowZero && value == address(0)) {
+            revert ErrorLib.InvalidEnv(key, "zero address");
+        }
+    }
+
+    function envOrAddress(string memory key, address fallbackValue) internal view returns (address value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = _parseAddress(vm.envString(key), key);
+    }
+
+    function requireBytes32(string memory key, bool allowZero) internal view returns (bytes32 value) {
+        try vm.envBytes32(key) returns (bytes32 parsed) {
+            value = parsed;
+        } catch {
+            string memory raw = vm.envOr(key, string(""));
+            if (bytes(raw).length == 0) revert ErrorLib.MissingEnv(key);
+            revert ErrorLib.InvalidEnv(key, "must be 0x-prefixed 64-hex bytes32");
+        }
+        if (!allowZero && value == bytes32(0)) {
+            revert ErrorLib.InvalidEnv(key, "zero bytes32");
+        }
+    }
+
+    function envOrBytes32(string memory key, bytes32 fallbackValue) internal view returns (bytes32 value) {
+        try vm.envBytes32(key) returns (bytes32 parsed) {
+            return parsed;
+        } catch {
+            string memory raw = vm.envOr(key, string(""));
+            if (bytes(raw).length == 0) return fallbackValue;
+            revert ErrorLib.InvalidEnv(key, "must be 0x-prefixed 64-hex bytes32");
+        }
+    }
+
+    function requireUint(string memory key) internal view returns (uint256 value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        value = vm.envUint(key);
+    }
+
+    function requireUint8(string memory key) internal view returns (uint8 value) {
+        value = toUint8Checked(requireUint(key), key);
+    }
+
+    function requireUint16(string memory key) internal view returns (uint16 value) {
+        value = toUint16Checked(requireUint(key), key);
+    }
+
+    function requireUint24(string memory key) internal view returns (uint24 value) {
+        value = toUint24Checked(requireUint(key), key);
+    }
+
+    function requireUint32(string memory key) internal view returns (uint32 value) {
+        value = toUint32Checked(requireUint(key), key);
+    }
+
+    function requireUint64(string memory key) internal view returns (uint64 value) {
+        value = toUint64Checked(requireUint(key), key);
+    }
+
+    function requireInt24(string memory key) internal view returns (int24 value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        int256 raw = vm.envInt(key);
+        if (raw < type(int24).min || raw > type(int24).max) {
+            revert ErrorLib.InvalidEnv(key, "value out of int24 range");
+        }
+        value = int24(raw);
+    }
+
+    function requirePositiveInt24(string memory key) internal view returns (int24 value) {
+        value = toPositiveInt24Checked(requireUint(key), key);
+    }
+
+    function envOrUint(string memory key, uint256 fallbackValue) internal view returns (uint256 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = vm.envUint(key);
+    }
+
+    function envOrUint8(string memory key, uint8 fallbackValue) internal view returns (uint8 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint8Checked(vm.envUint(key), key);
+    }
+
+    function envOrUint16(string memory key, uint16 fallbackValue) internal view returns (uint16 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint16Checked(vm.envUint(key), key);
+    }
+
+    function envOrUint24(string memory key, uint24 fallbackValue) internal view returns (uint24 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint24Checked(vm.envUint(key), key);
+    }
+
+    function envOrUint32(string memory key, uint32 fallbackValue) internal view returns (uint32 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint32Checked(vm.envUint(key), key);
+    }
+
+    function envOrUint64(string memory key, uint64 fallbackValue) internal view returns (uint64 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint64Checked(vm.envUint(key), key);
+    }
+
+    function envOrPositiveInt24(string memory key, int24 fallbackValue) internal view returns (int24 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toPositiveInt24Checked(vm.envUint(key), key);
+    }
+
+    function envOrBool(string memory key, bool fallbackValue) internal view returns (bool value) {
+        if (!hasKey(key)) return fallbackValue;
+        try vm.envBool(key) returns (bool parsed) {
+            return parsed;
+        } catch {
+            string memory raw = vm.envString(key);
+            bytes memory b = bytes(_toLower(raw));
+            if (_eqBytes(b, bytes("1")) || _eqBytes(b, bytes("true")) || _eqBytes(b, bytes("yes"))) {
+                return true;
+            }
+            if (_eqBytes(b, bytes("0")) || _eqBytes(b, bytes("false")) || _eqBytes(b, bytes("no"))) {
+                return false;
+            }
+            return fallbackValue;
+        }
+    }
+
+    function envOrString(string memory key, string memory fallbackValue)
+        internal
+        view
+        returns (string memory value)
+    {
+        if (!hasKey(key)) return fallbackValue;
+        value = vm.envString(key);
+    }
+
+    function envOrDecimalE18(string memory key, uint256 fallbackValue) internal view returns (uint256) {
+        if (!hasKey(key)) return fallbackValue;
+        return requireDecimalScaled(key, 18);
+    }
+
+    function requireDecimalE18(string memory key) internal view returns (uint256) {
+        return requireDecimalScaled(key, 18);
+    }
+
+    function envOrBpsFromPercent(string memory key, uint16 fallbackValue)
+        internal
+        view
+        returns (uint16 value)
+    {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 2), key);
+    }
+
+    function requireBpsFromPercent(string memory key) internal view returns (uint16 value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 2), key);
+    }
+
+    function envOrPipsFromPercent(string memory key, uint24 fallbackValue)
+        internal
+        view
+        returns (uint24 value)
+    {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint24Checked(parseDecimalToScale(vm.envString(key), key, 4), key);
+    }
+
+    function requirePipsFromPercent(string memory key) internal view returns (uint24 value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        value = toUint24Checked(parseDecimalToScale(vm.envString(key), key, 4), key);
+    }
+
+    function envOrBpsFromMultiplierX(string memory key, uint16 fallbackValue)
+        internal
+        view
+        returns (uint16 value)
+    {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 4), key);
+    }
+
+    function requireBpsFromMultiplierX(string memory key) internal view returns (uint16 value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 4), key);
+    }
+
+    function envOrUsd6FromUsd(string memory key, uint64 fallbackValue) internal view returns (uint64 value) {
+        if (!hasKey(key)) return fallbackValue;
+        value = toUint64Checked(parseDecimalToScale(vm.envString(key), key, 6), key);
+    }
+
+    function requireUsd6FromUsd(string memory key) internal view returns (uint64 value) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        value = toUint64Checked(parseDecimalToScale(vm.envString(key), key, 6), key);
+    }
+
+    function requireDecimalScaled(string memory key, uint8 scaleDecimals) internal view returns (uint256) {
+        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
+        return parseDecimalToScale(vm.envString(key), key, scaleDecimals);
+    }
+
+    function parseDecimalToE18(string memory raw, string memory key) internal pure returns (uint256) {
+        return parseDecimalToScale(raw, key, 18);
+    }
+
+    function parseDecimalToScale(string memory raw, string memory key, uint8 scaleDecimals)
+        internal
+        pure
+        returns (uint256)
+    {
+        bytes memory b = bytes(raw);
+        if (b.length == 0) revert ErrorLib.InvalidEnv(key, "empty decimal");
+
+        uint256 integerPart = 0;
+        uint256 fractionalPart = 0;
+        uint256 fractionalDigits = 0;
+        bool dotSeen = false;
+
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 ch = b[i];
+            if (ch == "_") {
+                continue;
+            }
+            if (ch == ".") {
+                if (dotSeen) revert ErrorLib.InvalidEnv(key, "multiple dots");
+                dotSeen = true;
+                continue;
+            }
+
+            if (ch < "0" || ch > "9") {
+                revert ErrorLib.InvalidEnv(key, "non-digit decimal char");
+            }
+
+            uint256 digit = uint8(ch) - 48;
+            if (!dotSeen) {
+                integerPart = integerPart * 10 + digit;
+            } else if (fractionalDigits < scaleDecimals) {
+                fractionalPart = fractionalPart * 10 + digit;
+                fractionalDigits++;
+            } else {
+                // Ignore precision beyond target scale for deterministic truncation.
+            }
+        }
+
+        uint256 unit = 10 ** uint256(scaleDecimals);
+        uint256 scale = 10 ** uint256(scaleDecimals - fractionalDigits);
+        return integerPart * unit + fractionalPart * scale;
+    }
+
+    function _toLower(string memory s) private pure returns (string memory) {
+        bytes memory b = bytes(s);
+        for (uint256 i = 0; i < b.length; i++) {
+            if (b[i] >= 0x41 && b[i] <= 0x5A) {
+                b[i] = bytes1(uint8(b[i]) + 32);
+            }
+        }
+        return string(b);
+    }
+
+    function _eqBytes(bytes memory a, bytes memory b) private pure returns (bool) {
+        if (a.length != b.length) return false;
+        for (uint256 i = 0; i < a.length; i++) {
+            if (a[i] != b[i]) return false;
+        }
+        return true;
+    }
+
+    function _parseAddress(string memory raw, string memory key) private pure returns (address value) {
+        bytes memory b = bytes(raw);
+        if (b.length != 42 || b[0] != "0" || (b[1] != "x" && b[1] != "X")) {
+            revert ErrorLib.InvalidEnv(key, "must be 0x-prefixed 40-hex address");
+        }
+
+        uint160 parsed = 0;
+        for (uint256 i = 2; i < 42; i++) {
+            parsed = (parsed << 4) | uint160(_hexCharToNibble(b[i], key, "non-hex address char"));
+        }
+        value = address(parsed);
+    }
+
+    function _hexCharToNibble(bytes1 ch, string memory key, string memory reason)
+        private
+        pure
+        returns (uint8 value)
+    {
+        if (ch >= "0" && ch <= "9") return uint8(ch) - 48;
+        if (ch >= "a" && ch <= "f") return uint8(ch) - 87;
+        if (ch >= "A" && ch <= "F") return uint8(ch) - 55;
+        revert ErrorLib.InvalidEnv(key, reason);
+    }
+
+    function toUint8Checked(uint256 raw, string memory key) internal pure returns (uint8 value) {
+        if (raw > type(uint8).max) revert ErrorLib.InvalidEnv(key, "value too large for uint8");
+        value = uint8(raw);
+    }
+
+    function toUint16Checked(uint256 raw, string memory key) internal pure returns (uint16 value) {
+        if (raw > type(uint16).max) revert ErrorLib.InvalidEnv(key, "value too large for uint16");
+        value = uint16(raw);
+    }
+
+    function toUint24Checked(uint256 raw, string memory key) internal pure returns (uint24 value) {
+        if (raw > type(uint24).max) revert ErrorLib.InvalidEnv(key, "value too large for uint24");
+        value = uint24(raw);
+    }
+
+    function toUint32Checked(uint256 raw, string memory key) internal pure returns (uint32 value) {
+        if (raw > type(uint32).max) revert ErrorLib.InvalidEnv(key, "value too large for uint32");
+        value = uint32(raw);
+    }
+
+    function toUint64Checked(uint256 raw, string memory key) internal pure returns (uint64 value) {
+        if (raw > type(uint64).max) revert ErrorLib.InvalidEnv(key, "value too large for uint64");
+        value = uint64(raw);
+    }
+
+    function toPositiveInt24Checked(uint256 raw, string memory key) internal pure returns (int24 value) {
+        if (raw > uint256(uint24(type(int24).max))) {
+            revert ErrorLib.InvalidEnv(key, "must fit positive int24");
+        }
+        value = int24(uint24(raw));
+    }
+}

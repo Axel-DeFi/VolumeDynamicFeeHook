@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: LicenseRef-Audit-Only-Source-Available-1.0
+pragma solidity ^0.8.26;
+
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {VolumeDynamicFeeHook} from "src/VolumeDynamicFeeHook.sol";
+
+import {OpsTypes} from "../types/OpsTypes.sol";
+
+library HookIdentityLib {
+    address internal constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+    uint256 internal constant MAX_LOOP = 160_444;
+    uint160 internal constant EXPECTED_FLAGS = uint160(
+        Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
+    );
+
+    function constructorArgs(OpsTypes.DeploymentConfig memory cfg) internal pure returns (bytes memory args) {
+        args = abi.encode(
+            IPoolManager(cfg.poolManager),
+            Currency.wrap(cfg.token0),
+            Currency.wrap(cfg.token1),
+            cfg.tickSpacing,
+            Currency.wrap(cfg.stableToken),
+            cfg.stableDecimals,
+            cfg.floorFeePips,
+            cfg.cashFeePips,
+            cfg.extremeFeePips,
+            cfg.periodSeconds,
+            cfg.emaPeriods,
+            cfg.lullResetSeconds,
+            cfg.owner,
+            cfg.hookFeePercent,
+            cfg.floorToCashMinCloseVolume,
+            cfg.floorToCashMinFlowBps,
+            cfg.cashHoldPeriods,
+            cfg.cashToExtremeMinCloseVolume,
+            cfg.cashToExtremeMinFlowBps,
+            cfg.cashToExtremeConfirmPeriods,
+            cfg.extremeHoldPeriods,
+            cfg.extremeToCashMaxFlowBps,
+            cfg.extremeToCashConfirmPeriods,
+            cfg.cashToFloorMaxFlowBps,
+            cfg.cashToFloorConfirmPeriods,
+            cfg.emergencyToFloorMaxCloseVolume,
+            cfg.emergencyToFloorConfirmPeriods
+        );
+    }
+
+    function expectedHookAddress(OpsTypes.DeploymentConfig memory cfg)
+        internal
+        pure
+        returns (address hookAddress, bytes32 salt, bytes memory args)
+    {
+        args = constructorArgs(cfg);
+        bytes32 initCodeHash = keccak256(abi.encodePacked(type(VolumeDynamicFeeHook).creationCode, args));
+
+        for (uint256 rawSalt; rawSalt < MAX_LOOP; rawSalt++) {
+            hookAddress = _computeCreate2Address(CREATE2_DEPLOYER, rawSalt, initCodeHash);
+            if ((uint160(hookAddress) & Hooks.ALL_HOOK_MASK) == EXPECTED_FLAGS) {
+                salt = bytes32(rawSalt);
+                return (hookAddress, salt, args);
+            }
+        }
+
+        revert("HookIdentityLib: could not derive canonical hook address");
+    }
+
+    /// @dev CREATE2 address prediction without per-iteration memory allocation.
+    function _computeCreate2Address(address deployer, uint256 salt, bytes32 initCodeHash)
+        private
+        pure
+        returns (address addr)
+    {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore8(ptr, 0xff)
+            mstore(add(ptr, 1), shl(96, deployer))
+            mstore(add(ptr, 21), salt)
+            mstore(add(ptr, 53), initCodeHash)
+            addr := and(keccak256(ptr, 85), 0xffffffffffffffffffffffffffffffffffffffff)
+        }
+    }
+}
