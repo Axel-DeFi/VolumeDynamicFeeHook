@@ -163,7 +163,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 downStreak;
         uint8 emergencyStreak;
         uint8 reasonCode;
-        uint16 decisionFlags;
+        uint16 decisionBits;
     }
 
     struct PeriodTrace {
@@ -172,13 +172,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 fromFeeIdx;
         uint24 toFee;
         uint8 toFeeIdx;
-        uint64 closeVolumeUsd6;
-        uint96 emaBeforeUsd6Scaled;
-        uint96 emaAfterUsd6Scaled;
-        uint64 approxLpFeesUsd6;
-        uint16 decisionFlags;
-        uint16 countersBefore;
-        uint16 countersAfter;
+        uint64 periodVolume;
+        uint96 emaVolumeBefore;
+        uint96 emaVolumeAfter;
+        uint64 approxLpFeesUsd;
+        uint16 decisionBits;
+        uint16 stateBitsBefore;
+        uint16 stateBitsAfter;
         uint8 reasonCode;
     }
 
@@ -223,10 +223,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     );
 
     /// @notice Emitted alongside `PeriodClosed` with compact controller diagnostics for the closed period.
-    /// @dev `countersBefore` / `countersAfter` pack:
+    /// @dev `stateBitsBefore` / `stateBitsAfter` pack:
     /// bit 0 paused, bits 1..4 holdRemaining, bits 5..7 upExtremeStreak, bits 8..11 downStreak,
     /// bits 12..15 emergencyStreak.
-    /// @dev `decisionFlags` packs:
+    /// @dev `decisionBits` packs:
     /// bit 0 bootstrapV2, bit 2 holdWasActive, bit 3 emergencyTriggered,
     /// bit 4 cashEnterTrigger, bit 5 extremeEnterTrigger, bit 6 extremeExitTrigger, bit 7 cashExitTrigger.
     event ControllerTransitionTrace(
@@ -651,7 +651,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 oldFeeIdx = ctx.feeIdx;
         uint64 closedPeriodStart = ctx.periodStart;
         uint96 emaBefore = ctx.emaVolScaled;
-        uint16 countersBefore = _packControllerTransitionCounters(
+        uint16 stateBitsBefore = _packControllerTransitionCounters(
             ctx.paused, ctx.holdRemaining, ctx.upExtremeStreak, ctx.downStreak, ctx.emergencyStreak
         );
 
@@ -692,13 +692,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
                 fromFeeIdx: oldFeeIdx,
                 toFee: newFee,
                 toFeeIdx: ctx.feeIdx,
-                closeVolumeUsd6: 0,
-                emaBeforeUsd6Scaled: emaBefore,
-                emaAfterUsd6Scaled: 0,
-                approxLpFeesUsd6: 0,
-                decisionFlags: 0,
-                countersBefore: countersBefore,
-                countersAfter: _packControllerTransitionCounters(ctx.paused, ctx.holdRemaining, 0, 0, 0),
+                periodVolume: 0,
+                emaVolumeBefore: emaBefore,
+                emaVolumeAfter: 0,
+                approxLpFeesUsd: 0,
+                decisionBits: 0,
+                stateBitsBefore: stateBitsBefore,
+                stateBitsAfter: _packControllerTransitionCounters(ctx.paused, ctx.holdRemaining, 0, 0, 0),
                 reasonCode: REASON_LULL_RESET
             })
         );
@@ -728,7 +728,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         for (uint64 i = 0; i < periods; ++i) {
             uint64 closeVol = i == 0 ? closeVol0 : uint64(0);
             uint64 closedPeriodStart = periodStart0 + i * uint64(_config.periodSeconds);
-            uint16 countersBefore =
+            uint16 stateBitsBefore =
                 _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
 
             uint8 fromFeeIdx = f;
@@ -750,13 +750,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
                     fromFeeIdx: fromFeeIdx,
                     toFee: _modeFee(f),
                     toFeeIdx: f,
-                    closeVolumeUsd6: closeVol,
-                    emaBeforeUsd6Scaled: emaBefore,
-                    emaAfterUsd6Scaled: ema,
-                    approxLpFeesUsd6: _estimateApproxLpFeesUsd6(closeVol, fromFee),
-                    decisionFlags: transition.decisionFlags,
-                    countersBefore: countersBefore,
-                    countersAfter: _packControllerTransitionCounters(
+                    periodVolume: closeVol,
+                    emaVolumeBefore: emaBefore,
+                    emaVolumeAfter: ema,
+                    approxLpFeesUsd: _estimateApproxLpFeesUsd6(closeVol, fromFee),
+                    decisionBits: transition.decisionBits,
+                    stateBitsBefore: stateBitsBefore,
+                    stateBitsAfter: _packControllerTransitionCounters(
                         ctx.paused, hold, upStreak, down, emergency
                     ),
                     reasonCode: transition.reasonCode
@@ -823,16 +823,16 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Returns packed runtime fields used by offchain telemetry.
-    /// @return periodVolumeUsd6 Counted stable-side period volume in USD6.
-    /// @return emaVolumeUsd6Scaled Scaled EMA in USD6 * 1e6.
+    /// @return periodVolume Counted stable-side period volume in USD6.
+    /// @return emaVolumeScaled Scaled EMA in USD6 * 1e6.
     /// @return periodStart Current period start timestamp.
     /// @return feeIdx Active mode id (`0` floor, `1` cash, `2` extreme).
     function unpackedState()
         external
         view
-        returns (uint64 periodVolumeUsd6, uint96 emaVolumeUsd6Scaled, uint64 periodStart, uint8 feeIdx)
+        returns (uint64 periodVolume, uint96 emaVolumeScaled, uint64 periodStart, uint8 feeIdx)
     {
-        (periodVolumeUsd6, emaVolumeUsd6Scaled, periodStart, feeIdx,,,,,) = _unpackState(_state);
+        (periodVolume, emaVolumeScaled, periodStart, feeIdx,,,,,) = _unpackState(_state);
     }
 
     /// @notice Returns currently active mode id (`0` floor, `1` cash, `2` extreme).
@@ -1328,14 +1328,14 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Emergency reset while paused to floor mode.
-    /// @dev Clears EMA/counters (`emaVolumeUsd6Scaled`, hold/streak counters) and restarts open period state.
+    /// @dev Clears EMA/counters (`emaVolumeScaled`, hold/streak counters) and restarts open period state.
     /// @dev If the target fee index already matches current index, fee state still resets but no `FeeUpdated` is emitted.
     function emergencyResetToFloor() external onlyOwner whenPaused {
         _emergencyReset(MODE_FLOOR, true);
     }
 
     /// @notice Emergency reset while paused to cash mode.
-    /// @dev Clears EMA/counters (`emaVolumeUsd6Scaled`, hold/streak counters) and restarts open period state.
+    /// @dev Clears EMA/counters (`emaVolumeScaled`, hold/streak counters) and restarts open period state.
     /// @dev If the target fee index already matches current index, fee state still resets but no `FeeUpdated` is emitted.
     function emergencyResetToCash() external onlyOwner whenPaused {
         _emergencyReset(MODE_CASH, false);
@@ -1707,17 +1707,17 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             trace.fromFeeIdx,
             trace.toFee,
             trace.toFeeIdx,
-            trace.closeVolumeUsd6,
-            trace.emaAfterUsd6Scaled,
-            trace.approxLpFeesUsd6,
+            trace.periodVolume,
+            trace.emaVolumeAfter,
+            trace.approxLpFeesUsd,
             trace.reasonCode
         );
         _emitControllerTransitionTrace(trace);
     }
 
     /// @notice Emits `FeeUpdated` event.
-    function _emitFeeUpdate(uint24 fee, uint8 feeIdx, uint64 closeVolumeUsd6, uint96 emaVolumeUsd6Scaled) internal {
-        emit FeeUpdated(fee, feeIdx, closeVolumeUsd6, emaVolumeUsd6Scaled);
+    function _emitFeeUpdate(uint24 fee, uint8 feeIdx, uint64 periodVolume, uint96 emaVolumeScaled) internal {
+        emit FeeUpdated(fee, feeIdx, periodVolume, emaVolumeScaled);
     }
 
     function _emitControllerTransitionTrace(PeriodTrace memory trace) internal {
@@ -1727,13 +1727,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             trace.fromFeeIdx,
             trace.toFee,
             trace.toFeeIdx,
-            trace.closeVolumeUsd6,
-            trace.emaBeforeUsd6Scaled,
-            trace.emaAfterUsd6Scaled,
-            trace.approxLpFeesUsd6,
-            trace.decisionFlags,
-            trace.countersBefore,
-            trace.countersAfter,
+            trace.periodVolume,
+            trace.emaVolumeBefore,
+            trace.emaVolumeAfter,
+            trace.approxLpFeesUsd,
+            trace.decisionBits,
+            trace.stateBitsBefore,
+            trace.stateBitsAfter,
             trace.reasonCode
         );
     }
@@ -1804,10 +1804,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         result.emergencyStreak = emergencyStreak;
         result.reasonCode = closeVol == 0 ? REASON_NO_SWAPS : REASON_NO_CHANGE;
         if (bootstrapV2) {
-            result.decisionFlags |= TRACE_FLAG_BOOTSTRAP_V2;
+            result.decisionBits |= TRACE_FLAG_BOOTSTRAP_V2;
         }
         if (holdRemaining > 0) {
-            result.decisionFlags |= TRACE_FLAG_HOLD_WAS_ACTIVE;
+            result.decisionBits |= TRACE_FLAG_HOLD_WAS_ACTIVE;
         }
 
         // Hold counter is decremented before protection check; configured hold N gives N - 1 fully protected periods.
@@ -1829,7 +1829,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             result.downStreak = 0;
             result.emergencyStreak = 0;
             result.reasonCode = REASON_EMERGENCY_FLOOR;
-            result.decisionFlags |= TRACE_FLAG_EMERGENCY_TRIGGERED;
+            result.decisionBits |= TRACE_FLAG_EMERGENCY_TRIGGERED;
             return result;
         }
 
@@ -1840,7 +1840,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             uint256 cashThreshold = uint256(_config.floorToCashMinFlowBps);
             bool cashEnterTriggered = rBps >= cashThreshold;
             if (cashEnterTriggered) {
-                result.decisionFlags |= TRACE_FLAG_CASH_ENTER_TRIGGER;
+                result.decisionBits |= TRACE_FLAG_CASH_ENTER_TRIGGER;
             }
             bool canJumpCash =
                 !bootstrapV2
@@ -1863,7 +1863,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             bool extremeEnterTriggered =
                 closeVol >= _config.cashToExtremeMinCloseVolume && rBps >= extremeThreshold;
             if (extremeEnterTriggered) {
-                result.decisionFlags |= TRACE_FLAG_EXTREME_ENTER_TRIGGER;
+                result.decisionBits |= TRACE_FLAG_EXTREME_ENTER_TRIGGER;
             }
             if (extremeEnterTriggered) {
                 result.upExtremeStreak = _incrementStreak(result.upExtremeStreak, MAX_UP_EXTREME_STREAK);
@@ -1888,11 +1888,11 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
         if (result.feeIdx == MODE_EXTREME) {
             if (rBps <= uint256(_config.extremeToCashMaxFlowBps)) {
-                result.decisionFlags |= TRACE_FLAG_EXTREME_EXIT_TRIGGER;
+                result.decisionBits |= TRACE_FLAG_EXTREME_EXIT_TRIGGER;
             }
         } else if (result.feeIdx == MODE_CASH) {
             if (rBps <= uint256(_config.cashToFloorMaxFlowBps)) {
-                result.decisionFlags |= TRACE_FLAG_CASH_EXIT_TRIGGER;
+                result.decisionBits |= TRACE_FLAG_CASH_EXIT_TRIGGER;
             }
         }
 
