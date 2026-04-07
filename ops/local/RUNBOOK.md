@@ -86,8 +86,8 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 
 ### Paused maintenance updates
 
-- `setControllerParams(...)` preserves active mode + EMA, clears hold/streak counters, and starts a fresh open period.
-- `setTimingParams(...)` behavior depends on what changed:
+- `setControllerSettings(...)` preserves active mode + EMA, clears hold/streak counters, and starts a fresh open period.
+- `setTimingSettings(...)` behavior depends on what changed:
   - if `periodSeconds` or `emaPeriods` changed: safe reset to FLOOR, EMA/counters cleared, fresh open period, immediate LP-fee sync if needed.
   - if only `lullResetSeconds` changed: preserve mode + EMA + counters, fresh open period only.
 

@@ -133,7 +133,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
     /// @notice Runtime state-machine parameters exposed as a grouped API.
     /// @dev Every `*Volume` field is expressed in USD using the internal 6-decimal scale.
-    struct ControllerParams {
+    struct ControllerSettings {
         uint64 floorToCashMinCloseVolume;
         uint16 floorToCashMinFlowBps;
         // Configured hold length N; hold only blocks the ordinary cash->floor path, while the emergency path keeps
@@ -490,12 +490,12 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (stableDecimals_ == 6) _stableScale = 1;
         else _stableScale = 1_000_000_000_000;
 
-        _setTimingParamsInternal(_periodSeconds, _emaPeriods, _lullResetSeconds);
+        _setTimingSettingsInternal(_periodSeconds, _emaPeriods, _lullResetSeconds);
         _setOwnerInternal(ownerAddr);
         _setHookFeePercentInternal(hookFeePercent_);
         _setModeFeesInternal(_floorFee, _cashFee, _extremeFee);
 
-        ControllerParams memory p = ControllerParams({
+        ControllerSettings memory p = ControllerSettings({
             floorToCashMinCloseVolume: _floorToCashMinCloseVolume,
             floorToCashMinFlowBps: _floorToCashMinFlowBps,
             cashHoldPeriods: _cashHoldPeriods,
@@ -510,7 +510,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             emergencyToFloorMaxCloseVolume: _emergencyToFloorMaxCloseVolume,
             emergencyToFloorConfirmPeriods: _emergencyToFloorConfirmPeriods
         });
-        _setControllerParamsInternal(p);
+        _setControllerSettingsInternal(p);
 
         _config.minCountedSwapVolume = DEFAULT_MIN_COUNTED_SWAP_VOLUME;
 
@@ -975,8 +975,8 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Returns grouped controller transition params.
-    function getControllerParams() external view returns (ControllerParams memory p) {
-        p = ControllerParams({
+    function getControllerSettings() external view returns (ControllerSettings memory p) {
+        p = ControllerSettings({
             floorToCashMinCloseVolume: _config.floorToCashMinCloseVolume,
             floorToCashMinFlowBps: _config.floorToCashMinFlowBps,
             cashHoldPeriods: _config.cashHoldPeriods,
@@ -1173,10 +1173,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// `extremeHoldPeriods + extremeToCashConfirmPeriods - 1`, and the earliest emergency descent is
     /// `emergencyToFloorConfirmPeriods`.
     /// @dev Preserves active mode id and EMA, clears hold/streak counters, and starts a fresh open period.
-    function setControllerParams(ControllerParams calldata p) external onlyOwner whenPaused {
+    function setControllerSettings(ControllerSettings calldata p) external onlyOwner whenPaused {
         (, uint96 emaVolScaled, uint64 periodStart, uint8 feeIdx, bool paused_,,,,) = _unpackState(_state);
 
-        _setControllerParamsInternal(p);
+        _setControllerSettingsInternal(p);
         emit ControllerSettingsUpdated(
             p.floorToCashMinCloseVolume,
             p.floorToCashMinFlowBps,
@@ -1204,7 +1204,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// floor mode, zero EMA/counters, fresh open period, and immediate LP fee sync when active tier changes.
     /// @dev Non-time-scale updates (only `lullResetSeconds`) preserve mode and EMA/counters,
     /// and only restart a fresh open period.
-    function setTimingParams(uint32 periodSeconds_, uint8 emaPeriods_, uint32 lullResetSeconds_)
+    function setTimingSettings(uint32 periodSeconds_, uint8 emaPeriods_, uint32 lullResetSeconds_)
         external
         onlyOwner
         whenPaused
@@ -1224,7 +1224,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         bool timeScaleChanged = periodSeconds_ != _config.periodSeconds || emaPeriods_ != _config.emaPeriods;
         uint24 oldActiveFee = _modeFee(feeIdx);
 
-        _setTimingParamsInternal(periodSeconds_, emaPeriods_, lullResetSeconds_);
+        _setTimingSettingsInternal(periodSeconds_, emaPeriods_, lullResetSeconds_);
         emit TimingSettingsUpdated(periodSeconds_, emaPeriods_, lullResetSeconds_);
 
         if (periodStart == 0) return;
@@ -1417,7 +1417,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         }
     }
 
-    function _setTimingParamsInternal(
+    function _setTimingSettingsInternal(
         uint32 periodSeconds_,
         uint8 emaPeriods_,
         uint32 lullResetSeconds_
@@ -1432,7 +1432,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _config.lullResetSeconds = lullResetSeconds_;
     }
 
-    function _setControllerParamsInternal(ControllerParams memory p) internal {
+    function _setControllerSettingsInternal(ControllerSettings memory p) internal {
         if (p.cashHoldPeriods == 0 || p.cashHoldPeriods > MAX_HOLD_PERIODS) revert InvalidHoldPeriods();
         if (p.extremeHoldPeriods == 0 || p.extremeHoldPeriods > MAX_HOLD_PERIODS) {
             revert InvalidHoldPeriods();

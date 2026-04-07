@@ -55,7 +55,7 @@ contract PrepareGasScenarioLive is LiveOpsBase {
         if (!wasPaused) {
             hook.pause();
         }
-        hook.setTimingParams(gasPeriodSeconds, hook.emaPeriods(), gasLullResetSeconds);
+        hook.setTimingSettings(gasPeriodSeconds, hook.emaPeriods(), gasLullResetSeconds);
         hook.emergencyResetToFloor();
         if (cfg.stableToken != address(0)) {
             IERC20Minimal(cfg.stableToken).approve(driver, type(uint256).max);

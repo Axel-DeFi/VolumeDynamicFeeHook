@@ -51,7 +51,7 @@ contract CollectGasObservationsLocal is Script {
         }
         if (lullResetSeconds != worstCaseLullResetSeconds) {
             hook.pause();
-            hook.setTimingParams(periodSeconds, emaPeriods, worstCaseLullResetSeconds);
+            hook.setTimingSettings(periodSeconds, emaPeriods, worstCaseLullResetSeconds);
             hook.unpause();
             lullResetSeconds = worstCaseLullResetSeconds;
         }

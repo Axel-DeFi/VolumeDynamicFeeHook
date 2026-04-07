@@ -104,8 +104,8 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 - If reset target tier already equals current tier, state still resets and emits reset event, but no `FeeUpdated`.
 - Monitoring should consume reset events, not only fee update events.
 - Paused maintenance updates:
-  - `setControllerParams(...)` preserves mode + EMA, clears counters, and starts a fresh open period.
-  - `setTimingParams(...)` does a safe reset only for time-scale changes (`periodSeconds`/`emaPeriods`); changing only `lullResetSeconds` preserves mode + EMA + counters and restarts the open period only.
+  - `setControllerSettings(...)` preserves mode + EMA, clears counters, and starts a fresh open period.
+  - `setTimingSettings(...)` does a safe reset only for time-scale changes (`periodSeconds`/`emaPeriods`); changing only `lullResetSeconds` preserves mode + EMA + counters and restarts the open period only.
 
 ## Telemetry controls
 

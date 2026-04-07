@@ -85,7 +85,7 @@ Events:
 - `lullResetSeconds` must be strictly greater than `periodSeconds`.
 - Equality (`lullResetSeconds == periodSeconds`) is rejected.
 - Upper bound remains `lullResetSeconds <= periodSeconds * MAX_LULL_PERIODS`.
-- `setTimingParams(...)` semantics are explicit:
+- `setTimingSettings(...)` semantics are explicit:
   - if `periodSeconds` or `emaPeriods` changes, this is a time-scale change and triggers a safe reset:
     FLOOR mode, EMA reset, hold/streak counters reset, fresh open period, immediate LP-fee sync when active tier changes.
   - if only `lullResetSeconds` changes, mode + EMA + counters are preserved and only a fresh open period is started.
@@ -132,7 +132,7 @@ Current validated ranges:
 Invalid combinations revert with `InvalidConfig`.
 
 Paused maintenance behavior:
-- `setControllerParams(...)` preserves active mode id and EMA.
+- `setControllerSettings(...)` preserves active mode id and EMA.
 - It always clears hold/streak counters (`holdRemaining`, `upExtremeStreak`, `downStreak`, `emergencyStreak`).
 - It always starts a fresh open period (`periodVol = 0`, refreshed `periodStart`).
 
