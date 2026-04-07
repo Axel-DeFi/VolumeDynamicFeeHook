@@ -208,7 +208,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     // -----------------------------------------------------------------------
 
     /// @notice Emitted when active LP fee tier changes.
-    event FeeUpdated(uint24 newFee, uint8 newFeeIdx, uint64 closedVolumeUsd6, uint96 emaVolumeUsd6Scaled);
+    event FeeUpdated(uint24 fee, uint8 feeIdx, uint64 periodVolume, uint96 emaVolumeScaled);
 
     /// @notice Emitted for each period-close transition.
     event PeriodClosed(
@@ -216,9 +216,9 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 fromFeeIdx,
         uint24 toFee,
         uint8 toFeeIdx,
-        uint64 closedVolumeUsd6,
-        uint96 emaVolumeUsd6Scaled,
-        uint64 approxLpFeesUsd6,
+        uint64 periodVolume,
+        uint96 emaVolumeScaled,
+        uint64 approxLpFeesUsd,
         uint8 reasonCode
     );
 
@@ -235,13 +235,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 fromFeeIdx,
         uint24 toFee,
         uint8 toFeeIdx,
-        uint64 closeVolumeUsd6,
-        uint96 emaBeforeUsd6Scaled,
-        uint96 emaAfterUsd6Scaled,
-        uint64 approxLpFeesUsd6,
-        uint16 decisionFlags,
-        uint16 countersBefore,
-        uint16 countersAfter,
+        uint64 periodVolume,
+        uint96 emaVolumeBefore,
+        uint96 emaVolumeAfter,
+        uint64 approxLpFeesUsd,
+        uint16 decisionBits,
+        uint16 stateBitsBefore,
+        uint16 stateBitsAfter,
         uint8 reasonCode
     );
 
@@ -252,7 +252,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     event Unpaused(uint24 fee, uint8 feeIdx);
 
     /// @notice Emitted when lull reset triggers due to inactivity.
-    event LullReset(uint24 newFee, uint8 newFeeIdx);
+    event LullReset(uint24 fee, uint8 feeIdx);
 
     /// @notice Emitted when accrued HookFees are claimed.
     event HookFeesClaimed(address indexed to, uint256 amount0, uint256 amount1);
@@ -273,7 +273,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     event ModeFeesUpdated(uint24 floorFee, uint24 cashFee, uint24 extremeFee);
 
     /// @notice Emitted when core controller thresholds/confirm params are updated.
-    event ControllerParamsUpdated(
+    event ControllerSettingsUpdated(
         uint64 floorToCashMinCloseVolume,
         uint16 floorToCashMinFlowBps,
         uint8 cashHoldPeriods,
@@ -290,16 +290,16 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     );
 
     /// @notice Emitted when timing and smoothing params are updated.
-    event TimingParamsUpdated(uint32 periodSeconds, uint8 emaPeriods, uint32 lullResetSeconds);
+    event TimingSettingsUpdated(uint32 periodSeconds, uint8 emaPeriods, uint32 lullResetSeconds);
 
     /// @notice Emitted when a hook fee percent change is scheduled through timelock.
-    event HookFeePercentChangeScheduled(uint16 newHookFeePercent, uint64 executeAfter);
+    event HookFeeChangeScheduled(uint16 newHookFee, uint64 executeAfter);
 
     /// @notice Emitted when scheduled hook fee percent change is cancelled.
-    event HookFeePercentChangeCancelled(uint16 cancelledHookFeePercent);
+    event HookFeeChangeCancelled(uint16 cancelledHookFee);
 
     /// @notice Emitted when hook fee percent is executed and applied.
-    event HookFeePercentChanged(uint16 oldHookFeePercent, uint16 newHookFeePercent);
+    event HookFeeChanged(uint16 oldHookFee, uint16 newHookFee);
 
     /// @notice Emitted when min counted swap threshold update is scheduled.
     event MinCountedSwapVolumeChangeScheduled(uint64 newMinCountedSwapVolume);
@@ -311,10 +311,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     event MinCountedSwapVolumeChanged(uint64 oldMinCountedSwapVolume, uint64 newMinCountedSwapVolume);
 
     /// @notice Emitted when paused emergency reset sets controller to floor mode.
-    event EmergencyResetToFloorApplied(uint8 feeIdx, uint64 periodStart, uint96 emaVolumeUsd6Scaled);
+    event EmergencyResetToFloorApplied(uint8 feeIdx, uint64 periodStart, uint96 emaVolumeScaled);
 
     /// @notice Emitted when paused emergency reset sets controller to cash mode.
-    event EmergencyResetToCashApplied(uint8 feeIdx, uint64 periodStart, uint96 emaVolumeUsd6Scaled);
+    event EmergencyResetToCashApplied(uint8 feeIdx, uint64 periodStart, uint96 emaVolumeScaled);
 
     /// @notice Emitted when non-pool assets or ETH are rescued.
     event RescueTransfer(address indexed currency, uint256 amount, address indexed recipient);
@@ -515,9 +515,9 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _config.minCountedSwapVolume = DEFAULT_MIN_COUNTED_SWAP_VOLUME;
 
         emit OwnerUpdated(address(0), ownerAddr);
-        emit HookFeePercentChanged(0, hookFeePercent_);
+        emit HookFeeChanged(0, hookFeePercent_);
         emit ModeFeesUpdated(_floorFee, _cashFee, _extremeFee);
-        emit ControllerParamsUpdated(
+        emit ControllerSettingsUpdated(
             p.floorToCashMinCloseVolume,
             p.floorToCashMinFlowBps,
             p.cashHoldPeriods,
@@ -532,7 +532,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             p.emergencyToFloorMaxCloseVolume,
             p.emergencyToFloorConfirmPeriods
         );
-        emit TimingParamsUpdated(_periodSeconds, _emaPeriods, _lullResetSeconds);
+        emit TimingSettingsUpdated(_periodSeconds, _emaPeriods, _lullResetSeconds);
         emit MinCountedSwapVolumeChanged(0, DEFAULT_MIN_COUNTED_SWAP_VOLUME);
     }
 
@@ -1081,7 +1081,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _pendingHookFeePercent = newHookFeePercent;
         _pendingHookFeePercentExecuteAfter = executeAfter;
 
-        emit HookFeePercentChangeScheduled(newHookFeePercent, executeAfter);
+        emit HookFeeChangeScheduled(newHookFeePercent, executeAfter);
     }
 
     /// @notice Cancels scheduled HookFee percent change.
@@ -1093,7 +1093,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _pendingHookFeePercent = 0;
         _pendingHookFeePercentExecuteAfter = 0;
 
-        emit HookFeePercentChangeCancelled(cancelled);
+        emit HookFeeChangeCancelled(cancelled);
     }
 
     /// @notice Executes scheduled HookFee percent change after timelock delay.
@@ -1111,7 +1111,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _pendingHookFeePercentExecuteAfter = 0;
 
         _setHookFeePercentInternal(newValue);
-        emit HookFeePercentChanged(oldValue, newValue);
+        emit HookFeeChanged(oldValue, newValue);
     }
 
     /// @notice Schedules a new minimum counted swap threshold.
@@ -1177,7 +1177,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         (, uint96 emaVolScaled, uint64 periodStart, uint8 feeIdx, bool paused_,,,,) = _unpackState(_state);
 
         _setControllerParamsInternal(p);
-        emit ControllerParamsUpdated(
+        emit ControllerSettingsUpdated(
             p.floorToCashMinCloseVolume,
             p.floorToCashMinFlowBps,
             p.cashHoldPeriods,
@@ -1225,7 +1225,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint24 oldActiveFee = _modeFee(feeIdx);
 
         _setTimingParamsInternal(periodSeconds_, emaPeriods_, lullResetSeconds_);
-        emit TimingParamsUpdated(periodSeconds_, emaPeriods_, lullResetSeconds_);
+        emit TimingSettingsUpdated(periodSeconds_, emaPeriods_, lullResetSeconds_);
 
         if (periodStart == 0) return;
 
