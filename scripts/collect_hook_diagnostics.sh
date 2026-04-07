@@ -4,20 +4,26 @@ set -euo pipefail
 usage() {
   cat <<'EOF2'
 Usage:
-  ./scripts/collect_hook_diagnostics.sh --chain <chain>
+  ./scripts/collect_hook_diagnostics.sh --chain <chain> [--hook <address>]
 
 Example:
-  ./scripts/collect_hook_diagnostics.sh --chain optimism
+  ./scripts/collect_hook_diagnostics.sh --chain optimism --hook 0x6487...1044
 EOF2
 }
 
 CHAIN=""
+CLI_HOOK_ADDRESS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --chain)
       [[ $# -ge 2 ]] || { echo "Error: --chain requires a value" >&2; usage; exit 1; }
       CHAIN="$2"
+      shift 2
+      ;;
+    --hook)
+      [[ $# -ge 2 ]] || { echo "Error: --hook requires a value" >&2; usage; exit 1; }
+      CLI_HOOK_ADDRESS="$2"
       shift 2
       ;;
     -h|--help)
@@ -190,7 +196,7 @@ sanitize_root_env() {
 copy_if_exists() {
   local src="$1"
   local dst="$2"
-  [[ -f "$src" ]] && cp "$src" "$dst"
+  [[ -f "$src" ]] && cp "$src" "$dst" || true
 }
 
 warn() {
@@ -283,7 +289,7 @@ if [[ -f "$STATE_ENV" && ( -z "${HOOK_ADDRESS:-}" || -z "${POOL_MANAGER:-}" ) ]]
   STATE_POOL_MANAGER="$(read_json_value "$STATE_ENV" "poolManager")"
 fi
 
-HOOK="$(first_nonempty "${HOOK_ADDRESS:-}" "${STATE_HOOK_ADDRESS:-}")"
+HOOK="$(first_nonempty "${CLI_HOOK_ADDRESS:-}" "${HOOK_ADDRESS:-}" "${STATE_HOOK_ADDRESS:-}")"
 RPC_URL="${RPC_URL:-}"
 
 if is_zero_address "$HOOK"; then
@@ -308,7 +314,7 @@ PGSERVICE_VALUE="$(first_nonempty "${PGSERVICE:-}" "$(read_env_value "$ROOT_ENV"
 PGPASSFILE_VALUE="$(first_nonempty "${PGPASSFILE:-}" "$(read_env_value "$ROOT_ENV" "PGPASSFILE")")"
 
 TS="$(date -u +%Y%m%d_%H%M%S)"
-BUNDLE_NAME="hook_diagnostics_${CHAIN}_${TS}"
+BUNDLE_NAME="diag_$(date -u +%Y-%m-%d)"
 OUT_DIR="${PROJECT_ROOT}/out"
 WORK_DIR="${OUT_DIR}/${BUNDLE_NAME}"
 ARCHIVE_PATH="${OUT_DIR}/${BUNDLE_NAME}.tar.gz"
