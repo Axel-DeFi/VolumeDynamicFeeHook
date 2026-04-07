@@ -57,9 +57,9 @@ Artifacts:
 
 ### HookFee timelock (48h)
 
-1. `scheduleHookFeePercentChange(newPercent)`
-2. optional `cancelHookFeePercentChange()`
-3. after delay: `executeHookFeePercentChange()`
+1. `scheduleHookFeeChange(newPercent)`
+2. optional `cancelHookFeeChange()`
+3. after delay: `executeHookFeeChange()`
 
 Timelock visibility is intentional. The main exposed effect is HookFee timing; LP fee ownership/accrual is unchanged.
 
@@ -139,5 +139,5 @@ Controller safety note:
 ## Monitoring minimums
 
 - Track `PeriodClosed` and alert on repeated abnormal mode escalations.
-- Track admin/security events: `ModeFeesUpdated`, `ControllerParamsUpdated`, `TimingParamsUpdated`, `Paused`, `Unpaused`, emergency-reset events.
+- Track admin/security events: `ModeFeesUpdated`, `ControllerSettingsUpdated`, `TimingSettingsUpdated`, `Paused`, `Unpaused`, emergency-reset events.
 - Treat wash-trading and fee-poisoning as residual economic risks in adversarial routing environments.

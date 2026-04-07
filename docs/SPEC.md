@@ -245,7 +245,7 @@ Bit-packing note:
 ## Approximate LP fee metric
 
 `PeriodClosed` emits:
-- `approxLpFeesUsd6`
+- `approxLpFeesUsd`
 
 This metric is approximate telemetry only, not accounting-grade LP revenue.
 
@@ -264,22 +264,22 @@ Field semantics:
 - `periodStart`: start timestamp of the period being closed. In multi-close catch-up, this advances by `periodSeconds` per closed period.
 - `fromFee` / `fromFeeIdx`: mode before controller evaluation for this closed period.
 - `toFee` / `toFeeIdx`: mode after controller evaluation for this closed period.
-- `closeVolumeUsd6`: counted volume of the closed period (`0` for zero-volume catch-up closes and lull reset).
-- `emaBeforeUsd6Scaled`: EMA before `_updateEmaScaled(...)`.
-- `emaAfterUsd6Scaled`: EMA immediately after `_updateEmaScaled(...)`. This is still non-zero for ordinary zero-volume closes; only lull reset forces it to `0`.
-- `approxLpFeesUsd6`: same approximate telemetry metric as `PeriodClosed`, based on `fromFee`.
+- `periodVolume`: counted volume of the closed period (`0` for zero-volume catch-up closes and lull reset).
+- `emaVolumeBefore`: EMA before `_updateEmaScaled(...)`.
+- `emaVolumeAfter`: EMA immediately after `_updateEmaScaled(...)`. This is still non-zero for ordinary zero-volume closes; only lull reset forces it to `0`.
+- `approxLpFeesUsd`: same approximate telemetry metric as `PeriodClosed`, based on `fromFee`.
 - `reasonCode`: unchanged controller reason code already used by `PeriodClosed`.
 
 Compact counter packing:
-- `countersBefore` and `countersAfter` use:
+- `stateBitsBefore` and `stateBitsAfter` use:
   bit `0` paused,
   bits `1..4` holdRemaining,
   bits `5..7` upExtremeStreak,
   bits `8..11` downStreak,
   bits `12..15` emergencyStreak.
-- These counters describe the controller state immediately before and immediately after the close evaluation, not the long-lived packed `_state` bit positions.
+- These fields describe the controller state immediately before and immediately after the close evaluation, not the long-lived packed `_state` bit positions.
 
-Compact decision flag packing:
+Compact decision bit packing:
 - bit `0`: `bootstrapV2`
 - bit `2`: `holdWasActive`
 - bit `3`: `emergencyTriggered`
@@ -289,17 +289,17 @@ Compact decision flag packing:
 - bit `7`: `cashExitTrigger`
 
 Interpretation notes:
-- `holdWasActive` refers to the pre-decrement hold state at close start; `countersAfter` reflects post-decrement/post-transition counters.
+- `holdWasActive` refers to the pre-decrement hold state at close start; `stateBitsAfter` reflects post-decrement/post-transition state.
 - `emergencyTriggered` means the automatic emergency-floor rule fired before ordinary mode logic.
 - trigger flags are diagnostic hints for which transition thresholds were met on that close; they do not imply a transition actually happened.
 
 Lull reset trace semantics:
-- `closeVolumeUsd6 = 0`
-- `emaBeforeUsd6Scaled =` previous EMA
-- `emaAfterUsd6Scaled = 0`
-- `approxLpFeesUsd6 = 0`
-- `decisionFlags = 0`
-- `countersBefore` captures the pre-reset controller counters and `countersAfter` is the zeroed post-reset state.
+- `periodVolume = 0`
+- `emaVolumeBefore =` previous EMA
+- `emaVolumeAfter = 0`
+- `approxLpFeesUsd = 0`
+- `decisionBits = 0`
+- `stateBitsBefore` captures the pre-reset controller state and `stateBitsAfter` is the zeroed post-reset state.
 
 ## ETH handling
 
@@ -368,7 +368,7 @@ Monitoring interpretation note:
 - consume `ControllerTransitionTrace` together with `PeriodClosed` when debugging controller decisions, especially
   hold-protected closes, emergency-floor triggers, trigger-threshold hits, and lull resets.
 - monitor admin/security events as a minimum set:
-  `ModeFeesUpdated`, `ControllerParamsUpdated`, `TimingParamsUpdated`, `Paused`, `Unpaused`,
+  `ModeFeesUpdated`, `ControllerSettingsUpdated`, `TimingSettingsUpdated`, `Paused`, `Unpaused`,
   `EmergencyResetToFloorApplied`, `EmergencyResetToCashApplied`.
 - for native-asset pools, ownership changes must preserve native payout compatibility.
 - EMA preservation across `setModeFees(...)` is intentional for paused maintenance updates.

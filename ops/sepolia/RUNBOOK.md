@@ -76,9 +76,9 @@ against the Sepolia rehearsal deployment.
 
 ### HookFee percent timelock
 
-- `scheduleHookFeePercentChange(newPercent)`
-- optional `cancelHookFeePercentChange()`
-- `executeHookFeePercentChange()` after 48h
+- `scheduleHookFeeChange(newPercent)`
+- optional `cancelHookFeeChange()`
+- `executeHookFeeChange()` after 48h
 
 Timelock visibility is intentional. The main exposed effect is HookFee timing; LP fee ownership/accrual is unchanged.
 
@@ -140,5 +140,5 @@ Controller safety note:
 ## Monitoring and response
 
 - Monitor `PeriodClosed` for repeated abnormal mode escalations.
-- Monitor admin/security events: `ModeFeesUpdated`, `ControllerParamsUpdated`, `TimingParamsUpdated`, `Paused`, `Unpaused`, emergency reset events.
+- Monitor admin/security events: `ModeFeesUpdated`, `ControllerSettingsUpdated`, `TimingSettingsUpdated`, `Paused`, `Unpaused`, emergency reset events.
 - Treat wash-trading / fee-poisoning as residual economic manipulation risk, especially on low-cost networks.
