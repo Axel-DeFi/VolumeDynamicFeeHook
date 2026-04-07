@@ -9,5 +9,8 @@ __MACOSX/
 .vscode/
 .claude/
 
+# Audit (machine reports, drafts)
+audit/
+
 # Secrets
 .env
