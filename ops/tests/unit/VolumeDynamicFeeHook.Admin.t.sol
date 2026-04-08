@@ -30,22 +30,22 @@ contract VolumeDynamicFeeHookAdminHarness is VolumeDynamicFeeHook {
         uint24 _extremeFee,
         uint32 _periodSeconds,
         uint8 _emaPeriods,
-        uint32 _lullResetSeconds,
+        uint32 _idleResetSeconds,
         address ownerAddr,
         uint16 hookFeePercent,
-        uint64 _floorToCashMinCloseVolume,
-        uint16 _floorToCashMinFlowBps,
-        uint8 _cashHoldPeriods,
-        uint64 _cashToExtremeMinCloseVolume,
-        uint16 _cashToExtremeMinFlowBps,
-        uint8 _cashToExtremeConfirmPeriods,
-        uint8 _extremeHoldPeriods,
-        uint16 _extremeToCashMaxFlowBps,
-        uint8 _extremeToCashConfirmPeriods,
-        uint16 _cashToFloorMaxFlowBps,
-        uint8 _cashToFloorConfirmPeriods,
-        uint64 _emergencyToFloorMaxCloseVolume,
-        uint8 _emergencyToFloorConfirmPeriods
+        uint64 _enterCashMinVolume,
+        uint16 _enterCashEmaRatioPct,
+        uint8 _holdCashPeriods,
+        uint64 _enterExtremeMinVolume,
+        uint16 _enterExtremeEmaRatioPct,
+        uint8 _enterExtremeConfirmPeriods,
+        uint8 _holdExtremePeriods,
+        uint16 _exitExtremeEmaRatioPct,
+        uint8 _exitExtremeConfirmPeriods,
+        uint16 _exitCashEmaRatioPct,
+        uint8 _exitCashConfirmPeriods,
+        uint64 _lowVolumeReset,
+        uint8 _lowVolumeResetPeriods
     )
         VolumeDynamicFeeHook(
             _poolManager,
@@ -59,22 +59,22 @@ contract VolumeDynamicFeeHookAdminHarness is VolumeDynamicFeeHook {
             _extremeFee,
             _periodSeconds,
             _emaPeriods,
-            _lullResetSeconds,
+            _idleResetSeconds,
             ownerAddr,
             hookFeePercent,
-            _floorToCashMinCloseVolume,
-            _floorToCashMinFlowBps,
-            _cashHoldPeriods,
-            _cashToExtremeMinCloseVolume,
-            _cashToExtremeMinFlowBps,
-            _cashToExtremeConfirmPeriods,
-            _extremeHoldPeriods,
-            _extremeToCashMaxFlowBps,
-            _extremeToCashConfirmPeriods,
-            _cashToFloorMaxFlowBps,
-            _cashToFloorConfirmPeriods,
-            _emergencyToFloorMaxCloseVolume,
-            _emergencyToFloorConfirmPeriods
+            _enterCashMinVolume,
+            _enterCashEmaRatioPct,
+            _holdCashPeriods,
+            _enterExtremeMinVolume,
+            _enterExtremeEmaRatioPct,
+            _enterExtremeConfirmPeriods,
+            _holdExtremePeriods,
+            _exitExtremeEmaRatioPct,
+            _exitExtremeConfirmPeriods,
+            _exitCashEmaRatioPct,
+            _exitCashConfirmPeriods,
+            _lowVolumeReset,
+            _lowVolumeResetPeriods
         )
     {}
 
@@ -136,6 +136,18 @@ contract VolumeDynamicFeeHookAdminHarness is VolumeDynamicFeeHook {
 }
 
 contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelper {
+    struct StateSnapshot {
+        uint8 feeIdx;
+        uint8 hold;
+        uint8 up;
+        uint8 down;
+        uint8 emergency;
+        uint64 periodStart;
+        uint64 periodVol;
+        uint96 ema;
+        bool paused;
+    }
+
     MockPoolManager internal manager;
     VolumeDynamicFeeHookAdminHarness internal hook;
     PoolKey internal key;
@@ -188,7 +200,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     bytes32 internal constant PERIOD_CLOSED_TOPIC =
         keccak256("PeriodClosed(uint24,uint8,uint24,uint8,uint64,uint96,uint64,uint8)");
     bytes32 internal constant FEE_UPDATED_TOPIC = keccak256("FeeUpdated(uint24,uint8,uint64,uint96)");
-    bytes32 internal constant LULL_RESET_TOPIC = keccak256("LullReset(uint24,uint8)");
+    bytes32 internal constant IDLE_RESET_TOPIC = keccak256("IdleReset(uint24,uint8)");
 
     struct ControllerTransitionTraceLog {
         uint64 periodStart;
@@ -228,7 +240,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint256 traceCount;
         uint256 periodClosedCount;
         uint256 feeUpdatedCount;
-        uint256 lullResetCount;
+        uint256 idleResetCount;
         ControllerTransitionTraceLog lastTrace;
         PeriodClosedLog lastPeriodClosed;
         FeeUpdatedLog lastFeeUpdated;
@@ -353,19 +365,17 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         returns (VolumeDynamicFeeHook.ControllerSettings memory p)
     {
         p = VolumeDynamicFeeHook.ControllerSettings({
-            floorToCashMinCloseVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            floorToCashMinFlowBps: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
-            cashHoldPeriods: V2_CASH_HOLD_PERIODS,
-            cashToExtremeMinCloseVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            cashToExtremeMinFlowBps: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
-            cashToExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
-            extremeHoldPeriods: V2_EXTREME_HOLD_PERIODS,
-            extremeToCashMaxFlowBps: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
-            extremeToCashConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            cashToFloorMaxFlowBps: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
-            cashToFloorConfirmPeriods: V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
-            emergencyToFloorMaxCloseVolume: V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            emergencyToFloorConfirmPeriods: V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            enterCashMinVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
+            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            holdCashPeriods: V2_CASH_HOLD_PERIODS,
+            enterExtremeMinVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
+            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            enterExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
+            holdExtremePeriods: V2_EXTREME_HOLD_PERIODS,
+            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            exitExtremeConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
+            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            exitCashConfirmPeriods: V2_CASH_TO_FLOOR_CONFIRM_PERIODS
         });
     }
 
@@ -506,10 +516,15 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
                 continue;
             }
 
-            if (topic0 == LULL_RESET_TOPIC) {
-                capture.lullResetCount += 1;
+            if (topic0 == IDLE_RESET_TOPIC) {
+                capture.idleResetCount += 1;
             }
         }
+    }
+
+    function _captureState() internal view returns (StateSnapshot memory s) {
+        (s.feeIdx, s.hold, s.up, s.down, s.emergency, s.periodStart, s.periodVol, s.ema, s.paused) =
+            hook.getStateDebug();
     }
 
     function _expectedUpdatedEma(uint96 emaBefore, uint64 closeVolUsd6) internal pure returns (uint96) {
@@ -647,7 +662,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         (uint8 feeIdx, uint8 holdRemaining,,,,,,,) = hook.getStateDebug();
         assertEq(feeIdx, hook.MODE_CASH(), "precondition: active tier must be cash");
-        assertEq(holdRemaining, hook.cashHoldPeriods(), "precondition: cash hold must be freshly set");
+        assertEq(holdRemaining, hook.holdCashPeriods(), "precondition: cash hold must be freshly set");
     }
 
     function test_controllerTransitionTrace_normal_close_without_transition() public {
@@ -655,7 +670,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(openCapture.traceCount, 0, "trace must not emit on open-period swaps");
         assertEq(openCapture.periodClosedCount, 0, "PeriodClosed must not emit on open-period swaps");
         assertEq(openCapture.feeUpdatedCount, 0, "FeeUpdated must not emit on open-period swaps");
-        assertEq(openCapture.lullResetCount, 0, "LullReset must not emit on open-period swaps");
+        assertEq(openCapture.idleResetCount, 0, "IdleReset must not emit on open-period swaps");
 
         _advanceOnePeriod();
         _closeCurrentPeriod();
@@ -673,7 +688,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.traceCount, 1, "trace must emit once on period close");
         assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 0, "FeeUpdated must not emit without transition");
-        assertEq(capture.lullResetCount, 0, "LullReset must not emit on normal close");
+        assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
         assertEq(capture.lastTrace.periodStart, closedPeriodStart);
         assertEq(capture.lastTrace.fromFee, hook.floorFee());
@@ -716,7 +731,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.traceCount, 1, "trace must emit once on jump to cash");
         assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on transition");
-        assertEq(capture.lullResetCount, 0, "LullReset must not emit on normal close");
+        assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
         assertEq(capture.lastTrace.periodStart, closedPeriodStart);
         assertEq(capture.lastTrace.fromFee, hook.floorFee());
@@ -729,7 +744,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.approxLpFeesUsd, approxLpFees);
         assertEq(capture.lastTrace.decisionBits, TRACE_FLAG_CASH_ENTER_TRIGGER);
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, 0, 0, 0, 0));
-        assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, hook.cashHoldPeriods(), 0, 0, 0));
+        assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, hook.holdCashPeriods(), 0, 0, 0));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_JUMP_CASH());
 
         assertEq(capture.lastPeriodClosed.fromFee, hook.floorFee());
@@ -768,7 +783,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.traceCount, 1, "trace must emit once on jump to extreme");
         assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on transition");
-        assertEq(capture.lullResetCount, 0, "LullReset must not emit on normal close");
+        assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
         assertEq(capture.lastTrace.periodStart, closedPeriodStart);
         assertEq(capture.lastTrace.fromFee, hook.cashFee());
@@ -782,7 +797,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.decisionBits, TRACE_FLAG_HOLD_WAS_ACTIVE | TRACE_FLAG_EXTREME_ENTER_TRIGGER);
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, 1, 1, 0, 0));
         assertEq(
-            capture.lastTrace.stateBitsAfter, _packTraceCounters(false, hook.extremeHoldPeriods(), 0, 0, 0)
+            capture.lastTrace.stateBitsAfter, _packTraceCounters(false, hook.holdExtremePeriods(), 0, 0, 0)
         );
         assertEq(capture.lastTrace.reasonCode, hook.REASON_JUMP_EXTREME());
 
@@ -814,7 +829,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.traceCount, 1, "trace must emit once on hold-blocked close");
         assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 0, "FeeUpdated must not emit when hold keeps cash");
-        assertEq(capture.lullResetCount, 0, "LullReset must not emit on normal close");
+        assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
         assertEq(capture.lastTrace.periodStart, closedPeriodStart);
         assertEq(capture.lastTrace.fromFee, hook.cashFee());
@@ -826,7 +841,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.emaVolumeAfter, emaAfter);
         assertEq(capture.lastTrace.approxLpFeesUsd, 0);
         assertEq(capture.lastTrace.decisionBits, TRACE_FLAG_HOLD_WAS_ACTIVE | TRACE_FLAG_CASH_EXIT_TRIGGER);
-        assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, hook.cashHoldPeriods(), 0, 0, 0));
+        assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, hook.holdCashPeriods(), 0, 0, 0));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 1, 0, 0, 1));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_HOLD());
 
@@ -845,7 +860,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashToFloorConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
+        p.exitCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -867,7 +882,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.traceCount, 1, "trace must emit once on emergency floor transition");
         assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on emergency floor");
-        assertEq(capture.lullResetCount, 0, "LullReset must not emit on normal close");
+        assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
         assertEq(capture.lastTrace.periodStart, closedPeriodStart);
         assertEq(capture.lastTrace.fromFee, hook.cashFee());
@@ -903,8 +918,8 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.extremeToCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
-        p.cashToFloorConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
+        p.exitExtremeConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
+        p.exitCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -923,7 +938,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(feeIdxBeforeCatchUp, hook.MODE_EXTREME(), "precondition: active tier must be extreme");
         assertEq(
             holdBeforeCatchUp,
-            hook.extremeHoldPeriods(),
+            hook.holdExtremePeriods(),
             "precondition: extreme hold must be freshly set before catch-up"
         );
 
@@ -943,7 +958,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             "catch-up should emit PeriodClosed for each overdue period"
         );
         assertEq(capture.feeUpdatedCount, 1, "emergency floor should sync LP fee once after catch-up");
-        assertEq(capture.lullResetCount, 0, "catch-up below lull reset must not emit LullReset");
+        assertEq(capture.idleResetCount, 0, "catch-up below lull reset must not emit IdleReset");
 
         assertEq(
             capture.lastTrace.periodStart,
@@ -999,7 +1014,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.traceCount, 1, "trace must emit once on lull reset");
         assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on lull fee reset");
-        assertEq(capture.lullResetCount, 1, "LullReset must still emit");
+        assertEq(capture.idleResetCount, 1, "IdleReset must still emit");
 
         assertEq(capture.lastTrace.periodStart, closedPeriodStart);
         assertEq(capture.lastTrace.fromFee, hook.cashFee());
@@ -1011,16 +1026,16 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.emaVolumeAfter, 0);
         assertEq(capture.lastTrace.approxLpFeesUsd, 0);
         assertEq(capture.lastTrace.decisionBits, 0);
-        assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, hook.cashHoldPeriods(), 0, 0, 0));
+        assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, hook.holdCashPeriods(), 0, 0, 0));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 0, 0, 0, 0));
-        assertEq(capture.lastTrace.reasonCode, hook.REASON_LULL_RESET());
+        assertEq(capture.lastTrace.reasonCode, hook.REASON_IDLE_RESET());
 
         assertEq(capture.lastPeriodClosed.fromFee, hook.cashFee());
         assertEq(capture.lastPeriodClosed.toFee, hook.floorFee());
         assertEq(capture.lastPeriodClosed.periodVolume, 0);
         assertEq(capture.lastPeriodClosed.emaVolumeScaled, 0);
         assertEq(capture.lastPeriodClosed.approxLpFeesUsd, 0);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_LULL_RESET());
+        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_IDLE_RESET());
 
         assertEq(capture.lastFeeUpdated.fee, hook.floorFee());
         assertEq(capture.lastFeeUpdated.feeIdx, hook.MODE_FLOOR());
@@ -1188,55 +1203,35 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.proposeNewOwner(owner);
     }
 
-    function test_setTimingSettings_reverts_when_lullReset_equals_period() public {
-        hook.pause();
-
+    function test_setResetSettings_reverts_when_idleReset_equals_period() public {
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
-        hook.setTimingSettings(PERIOD_SECONDS, EMA_PERIODS, PERIOD_SECONDS);
+        hook.setResetSettings(PERIOD_SECONDS, V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
     }
 
-    function test_setTimingSettings_lull_only_keeps_mode_ema_and_counters() public {
+    function test_setResetSettings_idleReset_change_preserves_all_state() public {
         _moveToCashWithPendingUpExtremeStreak();
-        hook.pause();
 
-        (
-            uint8 feeIdxBefore,
-            uint8 holdBefore,
-            uint8 upBefore,
-            uint8 downBefore,
-            uint8 emergencyBefore,
-            uint64 periodStartBefore,,
-            uint96 emaBefore,
-        ) = hook.getStateDebug();
+        StateSnapshot memory before = _captureState();
         uint256 updatesBefore = manager.updateCount();
 
-        uint32 newLullReset = LULL_RESET_SECONDS + PERIOD_SECONDS;
-        hook.setTimingSettings(PERIOD_SECONDS, EMA_PERIODS, newLullReset);
+        uint32 newIdleReset = LULL_RESET_SECONDS + PERIOD_SECONDS;
+        hook.setResetSettings(newIdleReset, V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
 
-        (
-            uint8 feeIdxAfter,
-            uint8 holdAfter,
-            uint8 upAfter,
-            uint8 downAfter,
-            uint8 emergencyAfter,
-            uint64 periodStartAfter,
-            uint64 periodVolAfter,
-            uint96 emaAfter,
-        ) = hook.getStateDebug();
+        StateSnapshot memory after_ = _captureState();
 
-        assertEq(feeIdxAfter, feeIdxBefore);
-        assertEq(holdAfter, holdBefore);
-        assertEq(upAfter, upBefore);
-        assertEq(downAfter, downBefore);
-        assertEq(emergencyAfter, emergencyBefore);
-        assertEq(emaAfter, emaBefore);
-        assertEq(periodVolAfter, 0);
-        assertGe(periodStartAfter, periodStartBefore);
+        assertEq(after_.feeIdx, before.feeIdx, "mode must be preserved");
+        assertEq(after_.hold, before.hold, "hold must be preserved");
+        assertEq(after_.up, before.up, "up streak must be preserved");
+        assertEq(after_.down, before.down, "down streak must be preserved");
+        assertEq(after_.emergency, before.emergency, "emergency streak must be preserved");
+        assertEq(after_.ema, before.ema, "EMA must be preserved");
+        assertEq(after_.periodVol, before.periodVol, "period volume must be preserved");
+        assertEq(after_.periodStart, before.periodStart, "period start must be preserved");
         assertEq(manager.updateCount(), updatesBefore, "no immediate LP fee update expected");
-        assertEq(hook.lullResetSeconds(), newLullReset);
+        assertEq(hook.idleResetSeconds(), newIdleReset);
     }
 
-    function test_setTimingSettings_period_change_resets_to_floor_and_clears_state() public {
+    function test_setModel_period_change_resets_to_floor_and_clears_state() public {
         _moveToCashWithPendingUpExtremeStreak();
         hook.pause();
 
@@ -1246,8 +1241,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         uint256 updatesBefore = manager.updateCount();
         uint32 newPeriod = PERIOD_SECONDS + 15;
-        uint32 newLullReset = newPeriod + 30;
-        hook.setTimingSettings(newPeriod, EMA_PERIODS, newLullReset);
+        hook.setModel(newPeriod, EMA_PERIODS);
 
         (
             uint8 feeIdxAfter,
@@ -1273,10 +1267,9 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(manager.updateCount(), updatesBefore + 1, "fee update expected when active tier changes");
         assertEq(manager.lastFee(), hook.floorFee(), "active LP fee must switch to floor");
         assertEq(hook.periodSeconds(), newPeriod);
-        assertEq(hook.lullResetSeconds(), newLullReset);
     }
 
-    function test_setTimingSettings_emaPeriods_change_resets_to_floor_and_clears_state() public {
+    function test_setModel_emaPeriods_change_resets_to_floor_and_clears_state() public {
         _moveToCashWithPendingUpExtremeStreak();
         hook.pause();
 
@@ -1285,7 +1278,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         uint256 updatesBefore = manager.updateCount();
         uint8 newEmaPeriods = EMA_PERIODS + 1;
-        hook.setTimingSettings(PERIOD_SECONDS, newEmaPeriods, LULL_RESET_SECONDS);
+        hook.setModel(PERIOD_SECONDS, newEmaPeriods);
 
         (
             uint8 feeIdxAfter,
@@ -1311,34 +1304,34 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(hook.emaPeriods(), newEmaPeriods);
 
         hook.unpause();
-        assertFalse(hook.isPaused(), "unpause should still work after timing reset");
+        assertFalse(hook.isPaused(), "unpause should still work after model reset");
     }
 
-    function test_setTimingSettings_accepts_emaPeriods_above_previous_limit_and_up_to_128() public {
+    function test_setModel_accepts_emaPeriods_above_previous_limit_and_up_to_128() public {
         hook.pause();
 
-        hook.setTimingSettings(PERIOD_SECONDS, 65, LULL_RESET_SECONDS);
+        hook.setModel(PERIOD_SECONDS, 65);
         assertEq(hook.emaPeriods(), 65);
 
-        hook.setTimingSettings(PERIOD_SECONDS, 96, LULL_RESET_SECONDS);
+        hook.setModel(PERIOD_SECONDS, 96);
         assertEq(hook.emaPeriods(), 96);
 
-        hook.setTimingSettings(PERIOD_SECONDS, MAX_EMA_PERIODS, LULL_RESET_SECONDS);
+        hook.setModel(PERIOD_SECONDS, MAX_EMA_PERIODS);
         assertEq(hook.emaPeriods(), MAX_EMA_PERIODS);
     }
 
-    function test_setTimingSettings_reverts_when_emaPeriods_exceeds_128() public {
+    function test_setModel_reverts_when_emaPeriods_exceeds_128() public {
         hook.pause();
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
-        hook.setTimingSettings(PERIOD_SECONDS, uint8(MAX_EMA_PERIODS + 1), LULL_RESET_SECONDS);
+        hook.setModel(PERIOD_SECONDS, uint8(MAX_EMA_PERIODS + 1));
     }
 
     function test_setControllerSettings_reverts_when_cash_volume_threshold_exceeds_extreme_threshold() public {
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.floorToCashMinCloseVolume = p.cashToExtremeMinCloseVolume + 1;
+        p.enterCashMinVolume = p.enterExtremeMinVolume + 1;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         hook.setControllerSettings(p);
@@ -1348,7 +1341,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.floorToCashMinFlowBps = p.cashToExtremeMinFlowBps + 1;
+        p.enterCashEmaRatioPct = p.enterExtremeEmaRatioPct + 1;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         hook.setControllerSettings(p);
@@ -1358,180 +1351,121 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashToFloorMaxFlowBps = p.extremeToCashMaxFlowBps - 1;
+        p.exitCashEmaRatioPct = p.exitExtremeEmaRatioPct - 1;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         hook.setControllerSettings(p);
     }
 
-    function test_setControllerSettings_reverts_when_emergency_floor_threshold_is_zero() public {
-        hook.pause();
-
-        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.emergencyToFloorMaxCloseVolume = 0;
-
+    function test_setResetSettings_reverts_when_lowVolumeReset_is_zero() public {
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
-        hook.setControllerSettings(p);
+        hook.setResetSettings(LULL_RESET_SECONDS, 0, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
     }
 
-    function test_setControllerSettings_reverts_when_emergency_floor_not_below_cash_threshold() public {
-        hook.pause();
-
-        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.emergencyToFloorMaxCloseVolume = p.floorToCashMinCloseVolume;
-
+    function test_setResetSettings_reverts_when_lowVolumeReset_not_below_cash_threshold() public {
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
-        hook.setControllerSettings(p);
+        hook.setResetSettings(LULL_RESET_SECONDS, V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
     }
 
-    function test_setControllerSettings_accepts_when_emergency_floor_is_strictly_below_cash_threshold() public {
-        hook.pause();
-
-        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.emergencyToFloorMaxCloseVolume = p.floorToCashMinCloseVolume - 1;
-
-        hook.setControllerSettings(p);
-        assertEq(hook.emergencyToFloorMaxCloseVolume(), p.emergencyToFloorMaxCloseVolume);
+    function test_setResetSettings_accepts_when_lowVolumeReset_strictly_below_cash_threshold() public {
+        uint64 newLowVolumeReset = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME - 1;
+        hook.setResetSettings(LULL_RESET_SECONDS, newLowVolumeReset, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
+        assertEq(hook.lowVolumeReset(), newLowVolumeReset);
     }
 
     function test_setControllerSettings_accepts_new_maximum_supported_ranges() public {
-        hook.pause();
-
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashHoldPeriods = MAX_HOLD_PERIODS;
-        p.extremeHoldPeriods = MAX_HOLD_PERIODS;
-        p.cashToExtremeConfirmPeriods = MAX_UP_EXTREME_CONFIRM_PERIODS;
-        p.extremeToCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
-        p.cashToFloorConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
-        p.emergencyToFloorConfirmPeriods = MAX_EMERGENCY_STREAK_LIMIT;
+        p.holdCashPeriods = MAX_HOLD_PERIODS;
+        p.holdExtremePeriods = MAX_HOLD_PERIODS;
+        p.enterExtremeConfirmPeriods = MAX_UP_EXTREME_CONFIRM_PERIODS;
+        p.exitExtremeConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
+        p.exitCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
 
         hook.setControllerSettings(p);
 
         VolumeDynamicFeeHook.ControllerSettings memory updated = hook.getControllerSettings();
-        assertEq(updated.cashHoldPeriods, MAX_HOLD_PERIODS);
-        assertEq(updated.extremeHoldPeriods, MAX_HOLD_PERIODS);
-        assertEq(updated.cashToExtremeConfirmPeriods, MAX_UP_EXTREME_CONFIRM_PERIODS);
-        assertEq(updated.extremeToCashConfirmPeriods, MAX_DOWN_CONFIRM_PERIODS);
-        assertEq(updated.cashToFloorConfirmPeriods, MAX_DOWN_CONFIRM_PERIODS);
-        assertEq(updated.emergencyToFloorConfirmPeriods, MAX_EMERGENCY_STREAK_LIMIT);
+        assertEq(updated.holdCashPeriods, MAX_HOLD_PERIODS);
+        assertEq(updated.holdExtremePeriods, MAX_HOLD_PERIODS);
+        assertEq(updated.enterExtremeConfirmPeriods, MAX_UP_EXTREME_CONFIRM_PERIODS);
+        assertEq(updated.exitExtremeConfirmPeriods, MAX_DOWN_CONFIRM_PERIODS);
+        assertEq(updated.exitCashConfirmPeriods, MAX_DOWN_CONFIRM_PERIODS);
+    }
+
+    function test_setResetSettings_accepts_maximum_lowVolumeResetPeriods() public {
+        hook.setResetSettings(LULL_RESET_SECONDS, V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME, MAX_EMERGENCY_STREAK_LIMIT);
+        assertEq(hook.lowVolumeResetPeriods(), MAX_EMERGENCY_STREAK_LIMIT);
     }
 
     function test_setControllerSettings_reverts_when_ranges_exceed_new_maximums() public {
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashHoldPeriods = uint8(MAX_HOLD_PERIODS + 1);
+        p.holdCashPeriods = uint8(MAX_HOLD_PERIODS + 1);
         vm.expectRevert(VolumeDynamicFeeHook.InvalidHoldPeriods.selector);
         hook.setControllerSettings(p);
 
         p = _defaultControllerSettings();
-        p.extremeHoldPeriods = uint8(MAX_HOLD_PERIODS + 1);
+        p.holdExtremePeriods = uint8(MAX_HOLD_PERIODS + 1);
         vm.expectRevert(VolumeDynamicFeeHook.InvalidHoldPeriods.selector);
         hook.setControllerSettings(p);
 
         p = _defaultControllerSettings();
-        p.cashToExtremeConfirmPeriods = uint8(MAX_UP_EXTREME_CONFIRM_PERIODS + 1);
+        p.enterExtremeConfirmPeriods = uint8(MAX_UP_EXTREME_CONFIRM_PERIODS + 1);
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfirmPeriods.selector);
         hook.setControllerSettings(p);
 
         p = _defaultControllerSettings();
-        p.extremeToCashConfirmPeriods = uint8(MAX_DOWN_CONFIRM_PERIODS + 1);
+        p.exitExtremeConfirmPeriods = uint8(MAX_DOWN_CONFIRM_PERIODS + 1);
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfirmPeriods.selector);
         hook.setControllerSettings(p);
 
         p = _defaultControllerSettings();
-        p.cashToFloorConfirmPeriods = uint8(MAX_DOWN_CONFIRM_PERIODS + 1);
-        vm.expectRevert(VolumeDynamicFeeHook.InvalidConfirmPeriods.selector);
-        hook.setControllerSettings(p);
-
-        p = _defaultControllerSettings();
-        p.emergencyToFloorConfirmPeriods = uint8(MAX_EMERGENCY_STREAK_LIMIT + 1);
+        p.exitCashConfirmPeriods = uint8(MAX_DOWN_CONFIRM_PERIODS + 1);
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfirmPeriods.selector);
         hook.setControllerSettings(p);
     }
 
-    function test_setControllerSettings_preserves_mode_and_ema_but_clears_counters() public {
-        _moveToCashWithPendingUpExtremeStreak();
-        hook.pause();
+    function test_setResetSettings_reverts_when_lowVolumeResetPeriods_exceeds_max() public {
+        vm.expectRevert(VolumeDynamicFeeHook.InvalidConfirmPeriods.selector);
+        hook.setResetSettings(LULL_RESET_SECONDS, V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME, uint8(MAX_EMERGENCY_STREAK_LIMIT + 1));
+    }
 
-        (
-            uint8 feeIdxBefore,
-            uint8 holdBefore,
-            uint8 upBefore,
-            uint8 downBefore,
-            uint8 emergencyBefore,
-            uint64 periodStartBefore,,
-            uint96 emaBefore,
-        ) = hook.getStateDebug();
-        assertEq(feeIdxBefore, hook.MODE_CASH());
-        assertGt(holdBefore, 0, "precondition: hold must be active");
-        assertGt(upBefore, 0, "precondition: up streak must be active");
+    function test_setControllerSettings_applies_immediately_without_state_reset() public {
+        _moveToCashWithPendingUpExtremeStreak();
+
+        StateSnapshot memory before = _captureState();
+        assertEq(before.feeIdx, hook.MODE_CASH());
+        assertGt(before.hold, 0, "precondition: hold must be active");
+        assertGt(before.up, 0, "precondition: up streak must be active");
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.floorToCashMinCloseVolume = p.floorToCashMinCloseVolume + 1;
-        p.cashToExtremeMinCloseVolume = p.cashToExtremeMinCloseVolume + 1;
+        p.enterCashMinVolume = p.enterCashMinVolume + 1;
+        p.enterExtremeMinVolume = p.enterExtremeMinVolume + 1;
         hook.setControllerSettings(p);
 
-        (
-            uint8 feeIdxAfter,
-            uint8 holdAfter,
-            uint8 upAfter,
-            uint8 downAfter,
-            uint8 emergencyAfter,
-            uint64 periodStartAfter,
-            uint64 periodVolAfter,
-            uint96 emaAfter,
-            bool pausedAfter
-        ) = hook.getStateDebug();
-        downBefore;
-        emergencyBefore;
-        assertEq(feeIdxAfter, feeIdxBefore, "mode must be preserved");
-        assertEq(emaAfter, emaBefore, "EMA must be preserved");
-        assertEq(holdAfter, 0, "hold counter must reset");
-        assertEq(upAfter, 0, "up streak must reset");
-        assertEq(downAfter, 0, "down streak must reset");
-        assertEq(emergencyAfter, 0, "emergency streak must reset");
-        assertEq(periodVolAfter, 0, "fresh open period must start from zero volume");
-        assertGe(periodStartAfter, periodStartBefore, "open period start must restart");
-        assertTrue(pausedAfter, "pause flag must remain true");
+        StateSnapshot memory after_ = _captureState();
+        assertEq(after_.feeIdx, before.feeIdx, "mode must be preserved");
+        assertEq(after_.ema, before.ema, "EMA must be preserved");
+        assertEq(after_.hold, before.hold, "hold counter must be preserved");
+        assertEq(after_.up, before.up, "up streak must be preserved");
+        assertEq(after_.down, before.down, "down streak must be preserved");
+        assertEq(after_.emergency, before.emergency, "emergency streak must be preserved");
+        assertEq(after_.periodVol, before.periodVol, "period volume must be preserved");
+        assertEq(after_.periodStart, before.periodStart, "period start must be preserved");
+        assertEq(hook.enterCashMinVolume(), p.enterCashMinVolume, "updated config must be stored");
     }
 
-    function test_setControllerSettings_clears_stale_up_streak_before_unpause() public {
-        _moveToCashWithPendingUpExtremeStreak();
-        hook.pause();
-
-        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.floorToCashMinCloseVolume = p.floorToCashMinCloseVolume + 1;
-        p.cashToExtremeMinCloseVolume = p.cashToExtremeMinCloseVolume + 1;
-        hook.setControllerSettings(p);
-        hook.unpause();
-
-        _swap(true, -1, -10_000_000_000, 9_000_000_000);
-        vm.warp(block.timestamp + PERIOD_SECONDS);
-        _swap(true, -1, 0, 0);
-
-        (uint8 feeIdxAfter,,,,,,,,) = hook.getStateDebug();
-        assertEq(
-            feeIdxAfter, hook.MODE_CASH(), "stale up streak must not trigger immediate jump to extreme"
-        );
-    }
-
-    function testFuzz_setControllerSettings_rejects_emergency_floor_not_below_cash_threshold(uint64 minCloseVolToCash)
+    function testFuzz_setResetSettings_rejects_lowVolumeReset_not_below_cash_threshold(uint64 seed)
         public
     {
-        hook.pause();
-
-        uint64 minCash = uint64(bound(minCloseVolToCash, 1, type(uint64).max));
-        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.floorToCashMinCloseVolume = minCash;
-        p.cashToExtremeMinCloseVolume = minCash;
-        p.emergencyToFloorMaxCloseVolume = minCash;
+        // Any value >= enterCashMinVolume must be rejected.
+        uint64 invalid = uint64(bound(seed, V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME, type(uint64).max));
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
-        hook.setControllerSettings(p);
+        hook.setResetSettings(LULL_RESET_SECONDS, invalid, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
     }
 
-    function testFuzz_setTimingSettings_time_scale_change_performs_safe_reset(uint32 periodSeed, uint8 emaSeed)
+    function testFuzz_setModel_time_scale_change_performs_safe_reset(uint32 periodSeed, uint8 emaSeed)
         public
     {
         _moveToCashModeWithHold();
@@ -1543,9 +1477,8 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             if (newEma < MAX_EMA_PERIODS) newEma += 1;
             else newPeriod += 1;
         }
-        uint32 newLull = newPeriod + 1;
 
-        hook.setTimingSettings(newPeriod, newEma, newLull);
+        hook.setModel(newPeriod, newEma);
 
         (
             uint8 feeIdxAfter,
@@ -1566,23 +1499,21 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(emaAfter, 0);
     }
 
-    function test_cashHoldPeriods_one_results_in_zero_effective_hold_protection() public {
+    function test_holdCashPeriods_one_results_in_zero_effective_hold_protection() public {
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = VolumeDynamicFeeHook.ControllerSettings({
-            floorToCashMinCloseVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            floorToCashMinFlowBps: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
-            cashHoldPeriods: 1,
-            cashToExtremeMinCloseVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            cashToExtremeMinFlowBps: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
-            cashToExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
-            extremeHoldPeriods: V2_EXTREME_HOLD_PERIODS,
-            extremeToCashMaxFlowBps: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
-            extremeToCashConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            cashToFloorMaxFlowBps: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
-            cashToFloorConfirmPeriods: 1,
-            emergencyToFloorMaxCloseVolume: V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            emergencyToFloorConfirmPeriods: V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            enterCashMinVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
+            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            holdCashPeriods: 1,
+            enterExtremeMinVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
+            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            enterExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
+            holdExtremePeriods: V2_EXTREME_HOLD_PERIODS,
+            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            exitExtremeConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
+            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            exitCashConfirmPeriods: 1
         });
         hook.setControllerSettings(p);
         hook.unpause();
@@ -1599,19 +1530,13 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(
             feeIdxAfterNextClose,
             hook.MODE_FLOOR(),
-            "cashHoldPeriods=1 should not provide an extra fully protected period"
+            "holdCashPeriods=1 should not provide an extra fully protected period"
         );
         assertEq(holdAfterNextClose, 0, "hold must be consumed at the next close");
     }
 
     function test_emergencyFloor_positive_threshold_still_triggers_transition_to_floor() public {
-        hook.pause();
-
-        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.emergencyToFloorMaxCloseVolume = 1;
-        p.emergencyToFloorConfirmPeriods = 1;
-        hook.setControllerSettings(p);
-        hook.unpause();
+        hook.setResetSettings(LULL_RESET_SECONDS, 1, 1);
 
         _moveToCashModeWithHold();
 
@@ -1648,7 +1573,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(
             feeIdxAfter,
             hook.MODE_FLOOR(),
-            "cashHoldPeriods=2 and cashToFloorConfirmPeriods=3 must first allow descent on weak close #4"
+            "holdCashPeriods=2 and exitCashConfirmPeriods=3 must first allow descent on weak close #4"
         );
     }
 
@@ -1658,7 +1583,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashToFloorConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
+        p.exitCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -1691,7 +1616,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(
             feeIdxAfter,
             hook.MODE_FLOOR(),
-            "emergencyToFloorConfirmPeriods=6 must first allow emergency descent on weak close #6 once the ordinary path is delayed"
+            "lowVolumeResetPeriods=6 must first allow emergency descent on weak close #6 once the ordinary path is delayed"
         );
     }
 
@@ -1702,7 +1627,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         (uint8 feeIdxAfterJump, uint8 holdAfterJump,,,,,,,) = hook.getStateDebug();
         assertEq(feeIdxAfterJump, hook.MODE_EXTREME(), "precondition: controller must enter extreme mode");
-        assertEq(holdAfterJump, hook.extremeHoldPeriods(), "precondition: extreme hold must be freshly set");
+        assertEq(holdAfterJump, hook.holdExtremePeriods(), "precondition: extreme hold must be freshly set");
 
         for (uint256 i = 1; i <= 2; ++i) {
             _closePeriodWithCountedVolume(LOW_NON_EMERGENCY_CLOSEVOL_USD6);
@@ -1725,17 +1650,17 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(
             feeIdxAfter,
             hook.MODE_CASH(),
-            "extremeHoldPeriods=2 and extremeToCashConfirmPeriods=2 must first allow descent on weak close #3"
+            "holdExtremePeriods=2 and exitExtremeConfirmPeriods=2 must first allow descent on weak close #3"
         );
     }
 
-    function test_cashToExtremeConfirmPeriods_upper_bound_requires_full_7_close_streak() public {
+    function test_enterExtremeConfirmPeriods_upper_bound_requires_full_7_close_streak() public {
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.floorToCashMinFlowBps = 1;
-        p.cashToExtremeMinFlowBps = 1;
-        p.cashToExtremeConfirmPeriods = MAX_UP_EXTREME_CONFIRM_PERIODS;
+        p.enterCashEmaRatioPct = 1;
+        p.enterExtremeEmaRatioPct = 1;
+        p.enterExtremeConfirmPeriods = MAX_UP_EXTREME_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -1755,16 +1680,16 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         (uint8 feeIdxAfterJump, uint8 holdRemaining,,,,,,,) = hook.getStateDebug();
         assertEq(feeIdxAfterJump, hook.MODE_EXTREME(), "cash must jump to extreme on the 7th qualifying close");
-        assertEq(holdRemaining, hook.extremeHoldPeriods(), "extreme hold must initialize without truncation");
+        assertEq(holdRemaining, hook.holdExtremePeriods(), "extreme hold must initialize without truncation");
     }
 
-    function test_cashToFloorConfirmPeriods_upper_bound_requires_full_15_close_streak() public {
-        hook.pause();
+    function test_exitCashConfirmPeriods_upper_bound_requires_full_15_close_streak() public {
+        hook.setResetSettings(LULL_RESET_SECONDS, 1, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
 
+        hook.pause();
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashHoldPeriods = 1;
-        p.cashToFloorConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
-        p.emergencyToFloorMaxCloseVolume = 1;
+        p.holdCashPeriods = 1;
+        p.exitCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -1788,14 +1713,14 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(emergencyStreak, 0, "emergency path must stay inactive in the non-emergency scenario");
     }
 
-    function test_extremeToCashConfirmPeriods_upper_bound_requires_full_15_close_streak() public {
-        hook.pause();
+    function test_exitExtremeConfirmPeriods_upper_bound_requires_full_15_close_streak() public {
+        hook.setResetSettings(LULL_RESET_SECONDS, 1, V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS);
 
+        hook.pause();
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashToExtremeConfirmPeriods = 1;
-        p.extremeHoldPeriods = 1;
-        p.extremeToCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
-        p.emergencyToFloorMaxCloseVolume = 1;
+        p.enterExtremeConfirmPeriods = 1;
+        p.holdExtremePeriods = 1;
+        p.exitExtremeConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -1828,13 +1753,13 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(emergencyStreak, 0, "emergency path must stay inactive in the non-emergency scenario");
     }
 
-    function test_emergencyToFloorConfirmPeriods_upper_bound_requires_full_15_close_streak() public {
+    function test_lowVolumeResetPeriods_upper_bound_requires_full_15_close_streak() public {
+        hook.setResetSettings(LULL_RESET_SECONDS, 1, MAX_EMERGENCY_STREAK_LIMIT);
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
-        p.cashHoldPeriods = 1;
-        p.cashToFloorConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
-        p.emergencyToFloorConfirmPeriods = MAX_EMERGENCY_STREAK_LIMIT;
+        p.holdCashPeriods = 1;
+        p.exitCashConfirmPeriods = MAX_DOWN_CONFIRM_PERIODS;
         hook.setControllerSettings(p);
         hook.unpause();
 
@@ -2049,8 +1974,8 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(extremeFee_, 9000);
     }
 
-    function test_minCountedSwapVolume_filters_only_telemetry_and_applies_next_period() public {
-        assertEq(hook.minCountedSwapVolume(), 4_000_000);
+    function test_dustSwapThreshold_filters_only_telemetry_and_applies_next_period() public {
+        assertEq(hook.dustSwapThreshold(), 4_000_000);
 
         _swap(true, -1, -1_000_000, 900_000);
         (uint64 periodVol,,,) = hook.unpackedState();
@@ -2061,14 +1986,14 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         (periodVol,,,) = hook.unpackedState();
         assertEq(periodVol, 6_000_000);
 
-        hook.scheduleMinCountedSwapVolumeChange(10_000_000);
+        hook.scheduleDustSwapThresholdChange(10_000_000);
         _swap(true, -1, -6_000_000, 5_700_000);
         (periodVol,,,) = hook.unpackedState();
         assertEq(periodVol, 12_000_000, "new threshold must not apply mid-period");
 
         vm.warp(block.timestamp + PERIOD_SECONDS);
         _swap(true, -1, 0, 0);
-        assertEq(hook.minCountedSwapVolume(), 10_000_000);
+        assertEq(hook.dustSwapThreshold(), 10_000_000);
 
         _swap(true, -1, -6_000_000, 5_700_000);
         (periodVol,,,) = hook.unpackedState();
@@ -2165,22 +2090,20 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.pause();
 
         VolumeDynamicFeeHook.ControllerSettings memory p = VolumeDynamicFeeHook.ControllerSettings({
-            floorToCashMinCloseVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME + 1,
-            floorToCashMinFlowBps: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
-            cashHoldPeriods: V2_CASH_HOLD_PERIODS,
-            cashToExtremeMinCloseVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            cashToExtremeMinFlowBps: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
-            cashToExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
-            extremeHoldPeriods: V2_EXTREME_HOLD_PERIODS,
-            extremeToCashMaxFlowBps: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
-            extremeToCashConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            cashToFloorMaxFlowBps: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
-            cashToFloorConfirmPeriods: V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
-            emergencyToFloorMaxCloseVolume: V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            emergencyToFloorConfirmPeriods: V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            enterCashMinVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME + 1,
+            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            holdCashPeriods: V2_CASH_HOLD_PERIODS,
+            enterExtremeMinVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
+            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            enterExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
+            holdExtremePeriods: V2_EXTREME_HOLD_PERIODS,
+            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            exitExtremeConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
+            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            exitCashConfirmPeriods: V2_CASH_TO_FLOOR_CONFIRM_PERIODS
         });
         hook.setControllerSettings(p);
-        hook.setTimingSettings(PERIOD_SECONDS, EMA_PERIODS, LULL_RESET_SECONDS);
+        hook.setModel(PERIOD_SECONDS, EMA_PERIODS);
 
         hook.unpause();
         assertFalse(hook.isPaused());

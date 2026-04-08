@@ -25,7 +25,7 @@ contract VolumeDynamicFeeHookHandler is Test {
     bool public stableIsCurrency0;
 
     uint32 public periodSeconds;
-    uint32 public lullResetSeconds;
+    uint32 public idleResetSeconds;
     bool public initialized;
 
     uint256 public expectedHookFees0;
@@ -44,7 +44,7 @@ contract VolumeDynamicFeeHookHandler is Test {
         stableIsCurrency0 = _stableIsCurrency0;
 
         periodSeconds = _hook.periodSeconds();
-        lullResetSeconds = _hook.lullResetSeconds();
+        idleResetSeconds = _hook.idleResetSeconds();
         initialized = true;
     }
 
@@ -83,7 +83,7 @@ contract VolumeDynamicFeeHookHandler is Test {
     function opWarp(uint32 dt) external {
         require(initialized, "not init");
 
-        uint256 step = bound(uint256(dt), 0, uint256(lullResetSeconds) * 2);
+        uint256 step = bound(uint256(dt), 0, uint256(idleResetSeconds) * 2);
         vm.warp(block.timestamp + step);
     }
 

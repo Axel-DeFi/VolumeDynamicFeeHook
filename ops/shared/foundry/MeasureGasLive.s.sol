@@ -170,7 +170,7 @@ contract MeasureGasLive is LiveOpsBase {
     function _primeFloorToCash() internal {
         _swapStableUsd6(_seedUsd6());
         _swapStableUsd6(
-            _chooseNextUpOpenPeriodUsd6(hook.floorToCashMinFlowBps(), hook.floorToCashMinCloseVolume())
+            _chooseNextUpOpenPeriodUsd6(hook.enterCashEmaRatioPct(), hook.enterCashMinVolume())
         );
         _assertMode(hook.MODE_FLOOR());
     }
@@ -181,10 +181,10 @@ contract MeasureGasLive is LiveOpsBase {
     }
 
     function _primeCashToExtreme() internal {
-        uint16 passThreshold = hook.cashToExtremeMinFlowBps();
+        uint16 passThreshold = hook.enterExtremeEmaRatioPct();
         _primeFloorToCash();
-        _completeFloorToCash(_chooseNextUpOpenPeriodUsd6(passThreshold, hook.cashToExtremeMinCloseVolume()));
-        _swapStableUsd6(_chooseNextUpOpenPeriodUsd6(passThreshold, hook.cashToExtremeMinCloseVolume()));
+        _completeFloorToCash(_chooseNextUpOpenPeriodUsd6(passThreshold, hook.enterExtremeMinVolume()));
+        _swapStableUsd6(_chooseNextUpOpenPeriodUsd6(passThreshold, hook.enterExtremeMinVolume()));
         _assertMode(hook.MODE_CASH());
     }
 
@@ -194,24 +194,24 @@ contract MeasureGasLive is LiveOpsBase {
     }
 
     function _primeExtremeToCash() internal {
-        uint16 downPassThreshold = hook.extremeToCashMaxFlowBps();
+        uint16 downPassThreshold = hook.exitExtremeEmaRatioPct();
         _primeCashToExtreme();
         _completeCashToExtreme(_chooseNextDownOpenPeriodUsd6(downPassThreshold));
 
-        for (uint256 i = 0; i < uint256(hook.extremeHoldPeriods()); ++i) {
+        for (uint256 i = 0; i < uint256(hook.holdExtremePeriods()); ++i) {
             _swapStableUsd6(_chooseNextDownOpenPeriodUsd6(downPassThreshold));
             _assertMode(hook.MODE_EXTREME());
         }
     }
 
     function _primeCashToFloor() internal {
-        uint16 downPassThreshold = hook.cashToFloorMaxFlowBps();
+        uint16 downPassThreshold = hook.exitCashEmaRatioPct();
         _primeExtremeToCash();
 
         _swapStableUsd6(_chooseNextDownOpenPeriodUsd6(downPassThreshold));
         _assertMode(hook.MODE_CASH());
 
-        for (uint256 i = 0; i + 1 < uint256(hook.cashToFloorConfirmPeriods()); ++i) {
+        for (uint256 i = 0; i + 1 < uint256(hook.exitCashConfirmPeriods()); ++i) {
             _swapStableUsd6(_chooseNextDownOpenPeriodUsd6(downPassThreshold));
             _assertMode(hook.MODE_CASH());
         }
@@ -236,8 +236,8 @@ contract MeasureGasLive is LiveOpsBase {
             emaAfterClose,
             hook.emaPeriods(),
             passThresholdBps,
-            hook.minCountedSwapVolume(),
-            hook.emergencyToFloorMaxCloseVolume()
+            hook.dustSwapThreshold(),
+            hook.lowVolumeReset()
         );
     }
 
@@ -278,12 +278,12 @@ contract MeasureGasLive is LiveOpsBase {
     }
 
     function _seedUsd6() internal view returns (uint64) {
-        uint64 floor = hook.floorToCashMinCloseVolume();
-        uint64 minCounted = hook.minCountedSwapVolume();
+        uint64 floor = hook.enterCashMinVolume();
+        uint64 minCounted = hook.dustSwapThreshold();
         return floor > minCounted ? floor : minCounted;
     }
 
     function _minCountedUsd6() internal view returns (uint64) {
-        return hook.minCountedSwapVolume();
+        return hook.dustSwapThreshold();
     }
 }

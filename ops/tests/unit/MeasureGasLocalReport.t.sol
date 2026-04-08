@@ -20,22 +20,22 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         cfg.extremeFeePips = 9_000;
         cfg.periodSeconds = 60;
         cfg.emaPeriods = 8;
-        cfg.lullResetSeconds = 600;
+        cfg.idleResetSeconds = 600;
         cfg.hookFeePercent = 10;
-        cfg.minCountedSwapVolume = 4_000_000;
-        cfg.floorToCashMinCloseVolume = 1_000 * 1e6;
-        cfg.floorToCashMinFlowBps = 18_500;
-        cfg.cashHoldPeriods = 4;
-        cfg.cashToExtremeMinCloseVolume = 4_000 * 1e6;
-        cfg.cashToExtremeMinFlowBps = 40_500;
-        cfg.cashToExtremeConfirmPeriods = 2;
-        cfg.extremeHoldPeriods = 4;
-        cfg.extremeToCashMaxFlowBps = 12_500;
-        cfg.extremeToCashConfirmPeriods = 2;
-        cfg.cashToFloorMaxFlowBps = 12_500;
-        cfg.cashToFloorConfirmPeriods = 3;
-        cfg.emergencyToFloorMaxCloseVolume = 600 * 1e6;
-        cfg.emergencyToFloorConfirmPeriods = 3;
+        cfg.dustSwapThreshold = 4_000_000;
+        cfg.enterCashMinVolume = 1_000 * 1e6;
+        cfg.enterCashEmaRatioPct = 18_500;
+        cfg.holdCashPeriods = 4;
+        cfg.enterExtremeMinVolume = 4_000 * 1e6;
+        cfg.enterExtremeEmaRatioPct = 40_500;
+        cfg.enterExtremeConfirmPeriods = 2;
+        cfg.holdExtremePeriods = 4;
+        cfg.exitExtremeEmaRatioPct = 12_500;
+        cfg.exitExtremeConfirmPeriods = 2;
+        cfg.exitCashEmaRatioPct = 12_500;
+        cfg.exitCashConfirmPeriods = 3;
+        cfg.lowVolumeReset = 600 * 1e6;
+        cfg.lowVolumeResetPeriods = 3;
     }
 
     function test_write_local_gas_samples() public {

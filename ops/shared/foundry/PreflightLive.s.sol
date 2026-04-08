@@ -78,27 +78,27 @@ contract PreflightLive is LiveOpsBase {
         if (hookValidation.ok) {
             bool hookDeployed = cfg.hookAddress != address(0) && cfg.hookAddress.code.length > 0;
 
-            uint64 floorToCashMinCloseVolume;
-            uint64 emergencyToFloorMaxCloseVolume;
-            uint8 cashHoldPeriods;
-            uint8 extremeHoldPeriods;
+            uint64 enterCashMinVolume;
+            uint64 lowVolumeReset;
+            uint8 holdCashPeriods;
+            uint8 holdExtremePeriods;
 
             if (hookDeployed) {
                 VolumeDynamicFeeHook h = VolumeDynamicFeeHook(payable(cfg.hookAddress));
-                floorToCashMinCloseVolume = h.floorToCashMinCloseVolume();
-                emergencyToFloorMaxCloseVolume = h.emergencyToFloorMaxCloseVolume();
-                cashHoldPeriods = h.cashHoldPeriods();
-                extremeHoldPeriods = h.extremeHoldPeriods();
+                enterCashMinVolume = h.enterCashMinVolume();
+                lowVolumeReset = h.lowVolumeReset();
+                holdCashPeriods = h.holdCashPeriods();
+                holdExtremePeriods = h.holdExtremePeriods();
             } else {
-                floorToCashMinCloseVolume = cfg.floorToCashMinCloseVolume;
-                emergencyToFloorMaxCloseVolume = cfg.emergencyToFloorMaxCloseVolume;
-                cashHoldPeriods = cfg.cashHoldPeriods;
-                extremeHoldPeriods = cfg.extremeHoldPeriods;
+                enterCashMinVolume = cfg.enterCashMinVolume;
+                lowVolumeReset = cfg.lowVolumeReset;
+                holdCashPeriods = cfg.holdCashPeriods;
+                holdExtremePeriods = cfg.holdExtremePeriods;
             }
 
             if (
-                emergencyToFloorMaxCloseVolume == 0
-                    || emergencyToFloorMaxCloseVolume >= floorToCashMinCloseVolume
+                lowVolumeReset == 0
+                    || lowVolumeReset >= enterCashMinVolume
             ) {
                 hookValidation.ok = false;
                 hookValidation.reason = "invalid emergency floor relation (require 0 < emergency < minCloseToCash)";
@@ -107,7 +107,7 @@ contract PreflightLive is LiveOpsBase {
             bool allowWeakHoldPeriods = vm.envOr("ALLOW_WEAK_HOLD_PERIODS", false);
             if (
                 hookValidation.ok
-                    && (cashHoldPeriods < 2 || extremeHoldPeriods < 2)
+                    && (holdCashPeriods < 2 || holdExtremePeriods < 2)
                     && !allowWeakHoldPeriods
             ) {
                 hookValidation.ok = false;

@@ -77,19 +77,19 @@ contract EnsureHookLive is LiveOpsBase {
         );
 
         address owner = deployCfg.owner;
-        uint64 floorToCashMinCloseVolume = deployCfg.floorToCashMinCloseVolume;
-        uint8 cashHoldPeriods = deployCfg.cashHoldPeriods;
-        uint64 cashToExtremeMinCloseVolume = deployCfg.cashToExtremeMinCloseVolume;
-        uint8 extremeHoldPeriods = deployCfg.extremeHoldPeriods;
-        uint64 emergencyToFloorMaxCloseVolume = deployCfg.emergencyToFloorMaxCloseVolume;
+        uint64 enterCashMinVolume = deployCfg.enterCashMinVolume;
+        uint8 holdCashPeriods = deployCfg.holdCashPeriods;
+        uint64 enterExtremeMinVolume = deployCfg.enterExtremeMinVolume;
+        uint8 holdExtremePeriods = deployCfg.holdExtremePeriods;
+        uint64 lowVolumeReset = deployCfg.lowVolumeReset;
         bool allowWeakHoldPeriods = vm.envOr("ALLOW_WEAK_HOLD_PERIODS", false);
         require(
-            emergencyToFloorMaxCloseVolume > 0 && emergencyToFloorMaxCloseVolume < floorToCashMinCloseVolume,
+            lowVolumeReset > 0 && lowVolumeReset < enterCashMinVolume,
             "invalid emergency floor threshold"
         );
-        cashToExtremeMinCloseVolume;
+        enterExtremeMinVolume;
         require(
-            allowWeakHoldPeriods || (cashHoldPeriods >= 2 && extremeHoldPeriods >= 2),
+            allowWeakHoldPeriods || (holdCashPeriods >= 2 && holdExtremePeriods >= 2),
             "weak hold periods blocked (set ALLOW_WEAK_HOLD_PERIODS=true to override)"
         );
 

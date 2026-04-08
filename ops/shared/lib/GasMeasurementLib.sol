@@ -12,7 +12,7 @@ library GasMeasurementLib {
         CashToExtreme,
         ExtremeToCash,
         CashToFloor,
-        LullReset,
+        IdleReset,
         Pause,
         Unpause,
         EmergencyResetToFloor,
@@ -34,7 +34,7 @@ library GasMeasurementLib {
         if (id == keccak256("cash_to_extreme")) return Operation.CashToExtreme;
         if (id == keccak256("extreme_to_cash")) return Operation.ExtremeToCash;
         if (id == keccak256("cash_to_floor")) return Operation.CashToFloor;
-        if (id == keccak256("lull_reset")) return Operation.LullReset;
+        if (id == keccak256("lull_reset")) return Operation.IdleReset;
         if (id == keccak256("pause")) return Operation.Pause;
         if (id == keccak256("unpause")) return Operation.Unpause;
         if (id == keccak256("emergency_reset_to_floor")) return Operation.EmergencyResetToFloor;
@@ -51,7 +51,7 @@ library GasMeasurementLib {
         if (op == Operation.CashToExtreme) return "cash_to_extreme";
         if (op == Operation.ExtremeToCash) return "extreme_to_cash";
         if (op == Operation.CashToFloor) return "cash_to_floor";
-        if (op == Operation.LullReset) return "lull_reset";
+        if (op == Operation.IdleReset) return "lull_reset";
         if (op == Operation.Pause) return "pause";
         if (op == Operation.Unpause) return "unpause";
         if (op == Operation.EmergencyResetToFloor) return "emergency_reset_to_floor";
@@ -136,13 +136,13 @@ library GasMeasurementLib {
         uint96 emaBeforeScaled,
         uint8 emaPeriods,
         uint16 passThresholdBps,
-        uint64 minCountedSwapVolume,
-        uint64 emergencyToFloorMaxCloseVolume
+        uint64 dustSwapThreshold,
+        uint64 lowVolumeReset
     ) internal pure returns (uint64 closeVolUsd6) {
-        uint64 floorRequired = minCountedSwapVolume;
-        if (emergencyToFloorMaxCloseVolume >= floorRequired) {
+        uint64 floorRequired = dustSwapThreshold;
+        if (lowVolumeReset >= floorRequired) {
             unchecked {
-                floorRequired = emergencyToFloorMaxCloseVolume + 1;
+                floorRequired = lowVolumeReset + 1;
             }
         }
 

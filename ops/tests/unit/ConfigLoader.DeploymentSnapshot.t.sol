@@ -63,21 +63,21 @@ contract ConfigLoaderDeploymentSnapshotTest is Test {
         assertEq(deployCfg.extremeFeePips, 9_000);
         assertEq(deployCfg.periodSeconds, 300);
         assertEq(deployCfg.emaPeriods, 8);
-        assertEq(deployCfg.lullResetSeconds, 3_600);
+        assertEq(deployCfg.idleResetSeconds, 3_600);
         assertEq(deployCfg.hookFeePercent, 1);
-        assertEq(deployCfg.floorToCashMinCloseVolume, 1_000_000_000);
-        assertEq(deployCfg.floorToCashMinFlowBps, 18_500);
-        assertEq(deployCfg.cashHoldPeriods, 4);
-        assertEq(deployCfg.cashToExtremeMinCloseVolume, 4_000_000_000);
-        assertEq(deployCfg.cashToExtremeMinFlowBps, 40_500);
-        assertEq(deployCfg.cashToExtremeConfirmPeriods, 2);
-        assertEq(deployCfg.extremeHoldPeriods, 4);
-        assertEq(deployCfg.extremeToCashMaxFlowBps, 12_500);
-        assertEq(deployCfg.extremeToCashConfirmPeriods, 2);
-        assertEq(deployCfg.cashToFloorMaxFlowBps, 12_500);
-        assertEq(deployCfg.cashToFloorConfirmPeriods, 3);
-        assertEq(deployCfg.emergencyToFloorMaxCloseVolume, 600_000_000);
-        assertEq(deployCfg.emergencyToFloorConfirmPeriods, 3);
+        assertEq(deployCfg.enterCashMinVolume, 1_000_000_000);
+        assertEq(deployCfg.enterCashEmaRatioPct, 18_500);
+        assertEq(deployCfg.holdCashPeriods, 4);
+        assertEq(deployCfg.enterExtremeMinVolume, 4_000_000_000);
+        assertEq(deployCfg.enterExtremeEmaRatioPct, 40_500);
+        assertEq(deployCfg.enterExtremeConfirmPeriods, 2);
+        assertEq(deployCfg.holdExtremePeriods, 4);
+        assertEq(deployCfg.exitExtremeEmaRatioPct, 12_500);
+        assertEq(deployCfg.exitExtremeConfirmPeriods, 2);
+        assertEq(deployCfg.exitCashEmaRatioPct, 12_500);
+        assertEq(deployCfg.exitCashConfirmPeriods, 3);
+        assertEq(deployCfg.lowVolumeReset, 600_000_000);
+        assertEq(deployCfg.lowVolumeResetPeriods, 3);
     }
 
     function test_loadCoreConfig_live_uses_runtime_bindings_when_present() public {
@@ -96,21 +96,21 @@ contract ConfigLoaderDeploymentSnapshotTest is Test {
         assertEq(runtimeCfg.extremeFeePips, 9_500);
         assertEq(runtimeCfg.periodSeconds, 600);
         assertEq(runtimeCfg.emaPeriods, 16);
-        assertEq(runtimeCfg.lullResetSeconds, 7_200);
+        assertEq(runtimeCfg.idleResetSeconds, 7_200);
         assertEq(runtimeCfg.hookFeePercent, 3);
-        assertEq(runtimeCfg.floorToCashMinCloseVolume, 1_500_000_000);
-        assertEq(runtimeCfg.floorToCashMinFlowBps, 20_200);
-        assertEq(runtimeCfg.cashHoldPeriods, 5);
-        assertEq(runtimeCfg.cashToExtremeMinCloseVolume, 4_500_000_000);
-        assertEq(runtimeCfg.cashToExtremeMinFlowBps, 43_200);
-        assertEq(runtimeCfg.cashToExtremeConfirmPeriods, 3);
-        assertEq(runtimeCfg.extremeHoldPeriods, 5);
-        assertEq(runtimeCfg.extremeToCashMaxFlowBps, 12_800);
-        assertEq(runtimeCfg.extremeToCashConfirmPeriods, 3);
-        assertEq(runtimeCfg.cashToFloorMaxFlowBps, 12_800);
-        assertEq(runtimeCfg.cashToFloorConfirmPeriods, 4);
-        assertEq(runtimeCfg.emergencyToFloorMaxCloseVolume, 700_000_000);
-        assertEq(runtimeCfg.emergencyToFloorConfirmPeriods, 4);
+        assertEq(runtimeCfg.enterCashMinVolume, 1_500_000_000);
+        assertEq(runtimeCfg.enterCashEmaRatioPct, 20_200);
+        assertEq(runtimeCfg.holdCashPeriods, 5);
+        assertEq(runtimeCfg.enterExtremeMinVolume, 4_500_000_000);
+        assertEq(runtimeCfg.enterExtremeEmaRatioPct, 43_200);
+        assertEq(runtimeCfg.enterExtremeConfirmPeriods, 3);
+        assertEq(runtimeCfg.holdExtremePeriods, 5);
+        assertEq(runtimeCfg.exitExtremeEmaRatioPct, 12_800);
+        assertEq(runtimeCfg.exitExtremeConfirmPeriods, 3);
+        assertEq(runtimeCfg.exitCashEmaRatioPct, 12_800);
+        assertEq(runtimeCfg.exitCashConfirmPeriods, 4);
+        assertEq(runtimeCfg.lowVolumeReset, 700_000_000);
+        assertEq(runtimeCfg.lowVolumeResetPeriods, 4);
     }
 
     function test_loadCoreConfig_live_reads_pool_id_as_bytes32() public {

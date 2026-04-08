@@ -39,21 +39,21 @@ contract CollectGasObservationsLocal is Script {
         MockPoolManager manager = MockPoolManager(payable(cfg.poolManager));
         uint32 periodSeconds = hook.periodSeconds();
         uint8 emaPeriods = hook.emaPeriods();
-        uint32 lullResetSeconds = hook.lullResetSeconds();
-        uint256 worstCaseLullResetRaw = uint256(periodSeconds) * uint256(MAX_LULL_PERIODS);
-        require(worstCaseLullResetRaw <= type(uint32).max, "periodSeconds too large");
-        uint32 worstCaseLullResetSeconds = uint32(worstCaseLullResetRaw);
-        uint256 worstCaseCatchUpWarpSeconds = worstCaseLullResetRaw - 1;
+        uint32 idleResetSeconds = hook.idleResetSeconds();
+        uint256 worstCaseIdleResetRaw = uint256(periodSeconds) * uint256(MAX_LULL_PERIODS);
+        require(worstCaseIdleResetRaw <= type(uint32).max, "periodSeconds too large");
+        uint32 worstCaseIdleResetSeconds = uint32(worstCaseIdleResetRaw);
+        uint256 worstCaseCatchUpWarpSeconds = worstCaseIdleResetRaw - 1;
 
         vm.startBroadcast(pk);
         if (hook.isPaused()) {
             hook.unpause();
         }
-        if (lullResetSeconds != worstCaseLullResetSeconds) {
+        if (idleResetSeconds != worstCaseIdleResetSeconds) {
             hook.pause();
-            hook.setTimingSettings(periodSeconds, emaPeriods, worstCaseLullResetSeconds);
+            hook.setTimingSettings(periodSeconds, emaPeriods, worstCaseIdleResetSeconds);
             hook.unpause();
-            lullResetSeconds = worstCaseLullResetSeconds;
+            idleResetSeconds = worstCaseIdleResetSeconds;
         }
 
         // Normal swap without rollover.
@@ -68,7 +68,7 @@ contract CollectGasObservationsLocal is Script {
         manager.callAfterSwap(hook, key, toBalanceDelta(0, 0));
 
         // First swap after lull-reset threshold.
-        vm.warp(block.timestamp + uint256(lullResetSeconds) + 1);
+        vm.warp(block.timestamp + uint256(idleResetSeconds) + 1);
         manager.callAfterSwap(hook, key, _stableDelta(cfg, swapAmountRaw));
 
         // Pause and resume operations.

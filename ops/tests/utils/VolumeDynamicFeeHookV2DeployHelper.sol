@@ -42,7 +42,7 @@ abstract contract VolumeDynamicFeeHookV2DeployHelper {
         uint24 extremeFee,
         uint32 periodSeconds,
         uint8 emaPeriods,
-        uint32 lullResetSeconds,
+        uint32 idleResetSeconds,
         address owner,
         uint16 hookFeePercent
     ) internal pure returns (bytes memory) {
@@ -58,7 +58,7 @@ abstract contract VolumeDynamicFeeHookV2DeployHelper {
             extremeFee,
             periodSeconds,
             emaPeriods,
-            lullResetSeconds,
+            idleResetSeconds,
             owner,
             hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
@@ -89,7 +89,7 @@ abstract contract VolumeDynamicFeeHookV2DeployHelper {
         uint24 extremeFee,
         uint32 periodSeconds,
         uint8 emaPeriods,
-        uint32 lullResetSeconds,
+        uint32 idleResetSeconds,
         address owner,
         uint16 hookFeePercent
     ) internal returns (VolumeDynamicFeeHook hook) {
@@ -105,7 +105,7 @@ abstract contract VolumeDynamicFeeHookV2DeployHelper {
             extremeFee,
             periodSeconds,
             emaPeriods,
-            lullResetSeconds,
+            idleResetSeconds,
             owner,
             hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
@@ -137,7 +137,7 @@ abstract contract VolumeDynamicFeeHookV2DeployHelper {
         uint24 extremeFee,
         uint32 periodSeconds,
         uint8 emaPeriods,
-        uint32 lullResetSeconds,
+        uint32 idleResetSeconds,
         address owner,
         uint16 hookFeePercent
     ) internal returns (VolumeDynamicFeeHook hook) {
@@ -153,7 +153,7 @@ abstract contract VolumeDynamicFeeHookV2DeployHelper {
             extremeFee,
             periodSeconds,
             emaPeriods,
-            lullResetSeconds,
+            idleResetSeconds,
             owner,
             hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,

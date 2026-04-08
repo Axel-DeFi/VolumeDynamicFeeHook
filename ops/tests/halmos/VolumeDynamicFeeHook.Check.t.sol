@@ -38,19 +38,19 @@ contract VolumeDynamicFeeHookHarness {
     // -----------------------------------------------------------------------
 
     struct Config {
-        uint64 emergencyToFloorMaxCloseVolume;
-        uint8 emergencyToFloorConfirmPeriods;
-        uint64 floorToCashMinCloseVolume;
-        uint16 floorToCashMinFlowBps;
-        uint8 cashHoldPeriods;
-        uint64 cashToExtremeMinCloseVolume;
-        uint16 cashToExtremeMinFlowBps;
-        uint8 cashToExtremeConfirmPeriods;
-        uint8 extremeHoldPeriods;
-        uint16 extremeToCashMaxFlowBps;
-        uint8 extremeToCashConfirmPeriods;
-        uint16 cashToFloorMaxFlowBps;
-        uint8 cashToFloorConfirmPeriods;
+        uint64 lowVolumeReset;
+        uint8 lowVolumeResetPeriods;
+        uint64 enterCashMinVolume;
+        uint16 enterCashEmaRatioPct;
+        uint8 holdCashPeriods;
+        uint64 enterExtremeMinVolume;
+        uint16 enterExtremeEmaRatioPct;
+        uint8 enterExtremeConfirmPeriods;
+        uint8 holdExtremePeriods;
+        uint16 exitExtremeEmaRatioPct;
+        uint8 exitExtremeConfirmPeriods;
+        uint16 exitCashEmaRatioPct;
+        uint8 exitCashConfirmPeriods;
         uint8 emaPeriods;
     }
 
@@ -173,12 +173,12 @@ contract VolumeDynamicFeeHookHarness {
         }
 
         // Emergency check.
-        if (closeVol < cfg.emergencyToFloorMaxCloseVolume) {
+        if (closeVol < cfg.lowVolumeReset) {
             result.emergencyStreak = _incrementStreak(result.emergencyStreak, MAX_EMERGENCY_STREAK);
         } else {
             result.emergencyStreak = 0;
         }
-        if (result.emergencyStreak >= cfg.emergencyToFloorConfirmPeriods && result.feeIdx != MODE_FLOOR) {
+        if (result.emergencyStreak >= cfg.lowVolumeResetPeriods && result.feeIdx != MODE_FLOOR) {
             result.feeIdx = MODE_FLOOR;
             result.holdRemaining = 0;
             result.upExtremeStreak = 0;
@@ -193,10 +193,10 @@ contract VolumeDynamicFeeHookHarness {
         // FLOOR -> CASH
         if (result.feeIdx == MODE_FLOOR) {
             bool canJumpCash = !bootstrapV2 && emaVolScaled != 0
-                && closeVol >= cfg.floorToCashMinCloseVolume && rBps >= uint256(cfg.floorToCashMinFlowBps);
+                && closeVol >= cfg.enterCashMinVolume && rBps >= uint256(cfg.enterCashEmaRatioPct);
             if (canJumpCash && result.feeIdx != MODE_CASH) {
                 result.feeIdx = MODE_CASH;
-                result.holdRemaining = cfg.cashHoldPeriods;
+                result.holdRemaining = cfg.holdCashPeriods;
                 result.upExtremeStreak = 0;
                 result.downStreak = 0;
                 result.emergencyStreak = 0;
@@ -207,18 +207,18 @@ contract VolumeDynamicFeeHookHarness {
         // CASH -> EXTREME
         if (result.feeIdx == MODE_CASH) {
             bool extremeEnterTriggered =
-                closeVol >= cfg.cashToExtremeMinCloseVolume && rBps >= uint256(cfg.cashToExtremeMinFlowBps);
+                closeVol >= cfg.enterExtremeMinVolume && rBps >= uint256(cfg.enterExtremeEmaRatioPct);
             if (extremeEnterTriggered) {
                 result.upExtremeStreak = _incrementStreak(result.upExtremeStreak, MAX_UP_EXTREME_STREAK);
             } else {
                 result.upExtremeStreak = 0;
             }
             if (
-                !bootstrapV2 && result.upExtremeStreak >= cfg.cashToExtremeConfirmPeriods
+                !bootstrapV2 && result.upExtremeStreak >= cfg.enterExtremeConfirmPeriods
                     && result.feeIdx != MODE_EXTREME
             ) {
                 result.feeIdx = MODE_EXTREME;
-                result.holdRemaining = cfg.extremeHoldPeriods;
+                result.holdRemaining = cfg.holdExtremePeriods;
                 result.upExtremeStreak = 0;
                 result.downStreak = 0;
                 result.emergencyStreak = 0;
@@ -236,13 +236,13 @@ contract VolumeDynamicFeeHookHarness {
 
         // EXTREME -> CASH
         if (result.feeIdx == MODE_EXTREME) {
-            bool downExtremePass = rBps <= uint256(cfg.extremeToCashMaxFlowBps);
+            bool downExtremePass = rBps <= uint256(cfg.exitExtremeEmaRatioPct);
             if (downExtremePass) {
                 result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
             } else {
                 result.downStreak = 0;
             }
-            if (result.downStreak >= cfg.extremeToCashConfirmPeriods) {
+            if (result.downStreak >= cfg.exitExtremeConfirmPeriods) {
                 result.downStreak = 0;
                 if (result.feeIdx != MODE_CASH) {
                     result.feeIdx = MODE_CASH;
@@ -250,13 +250,13 @@ contract VolumeDynamicFeeHookHarness {
                 }
             }
         } else if (result.feeIdx == MODE_CASH) {
-            bool downCashPass = rBps <= uint256(cfg.cashToFloorMaxFlowBps);
+            bool downCashPass = rBps <= uint256(cfg.exitCashEmaRatioPct);
             if (downCashPass) {
                 result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
             } else {
                 result.downStreak = 0;
             }
-            if (result.downStreak >= cfg.cashToFloorConfirmPeriods) {
+            if (result.downStreak >= cfg.exitCashConfirmPeriods) {
                 result.downStreak = 0;
                 if (result.feeIdx != MODE_FLOOR) {
                     result.feeIdx = MODE_FLOOR;
@@ -281,19 +281,19 @@ contract VolumeDynamicFeeHookCheckTest is Test {
 
         // Default config — mirrors VolumeDynamicFeeHookV2DeployHelper values.
         VolumeDynamicFeeHookHarness.Config memory c = VolumeDynamicFeeHookHarness.Config({
-            emergencyToFloorMaxCloseVolume: 100 * 1e6,
-            emergencyToFloorConfirmPeriods: 6,
-            floorToCashMinCloseVolume: 400 * 1e6,
-            floorToCashMinFlowBps: 13_500,
-            cashHoldPeriods: 2,
-            cashToExtremeMinCloseVolume: 2_500 * 1e6,
-            cashToExtremeMinFlowBps: 41_000,
-            cashToExtremeConfirmPeriods: 2,
-            extremeHoldPeriods: 2,
-            extremeToCashMaxFlowBps: 12_000,
-            extremeToCashConfirmPeriods: 2,
-            cashToFloorMaxFlowBps: 12_000,
-            cashToFloorConfirmPeriods: 3,
+            lowVolumeReset: 100 * 1e6,
+            lowVolumeResetPeriods: 6,
+            enterCashMinVolume: 400 * 1e6,
+            enterCashEmaRatioPct: 13_500,
+            holdCashPeriods: 2,
+            enterExtremeMinVolume: 2_500 * 1e6,
+            enterExtremeEmaRatioPct: 41_000,
+            enterExtremeConfirmPeriods: 2,
+            holdExtremePeriods: 2,
+            exitExtremeEmaRatioPct: 12_000,
+            exitExtremeConfirmPeriods: 2,
+            exitCashEmaRatioPct: 12_000,
+            exitCashConfirmPeriods: 3,
             emaPeriods: 8
         });
         harness.setConfig(c);
@@ -486,11 +486,11 @@ contract VolumeDynamicFeeHookCheckTest is Test {
 
         // Emergency conditions: closeVol is below emergency threshold.
         VolumeDynamicFeeHookHarness.Config memory c = harness.getConfig();
-        vm.assume(closeVol < c.emergencyToFloorMaxCloseVolume);
+        vm.assume(closeVol < c.lowVolumeReset);
 
         // Incoming streak already at confirmPeriods - 1; one more increment triggers emergency.
-        vm.assume(c.emergencyToFloorConfirmPeriods >= 1);
-        vm.assume(emergencyStreak == c.emergencyToFloorConfirmPeriods - 1);
+        vm.assume(c.lowVolumeResetPeriods >= 1);
+        vm.assume(emergencyStreak == c.lowVolumeResetPeriods - 1);
 
         // holdRemaining > 0 to prove emergency preempts hold.
         vm.assume(holdRemaining > 0);

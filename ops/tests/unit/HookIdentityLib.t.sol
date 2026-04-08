@@ -91,20 +91,20 @@ contract HookIdentityLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
         cfg.extremeFeePips = V2_DEFAULT_EXTREME_FEE;
         cfg.periodSeconds = PERIOD_SECONDS;
         cfg.emaPeriods = EMA_PERIODS;
-        cfg.lullResetSeconds = LULL_RESET_SECONDS;
+        cfg.idleResetSeconds = LULL_RESET_SECONDS;
         cfg.hookFeePercent = hookFeePercent_;
-        cfg.floorToCashMinCloseVolume = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
-        cfg.floorToCashMinFlowBps = V2_FLOOR_TO_CASH_MIN_FLOW_BPS;
-        cfg.cashHoldPeriods = V2_CASH_HOLD_PERIODS;
-        cfg.cashToExtremeMinCloseVolume = V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME;
-        cfg.cashToExtremeMinFlowBps = V2_CASH_TO_EXTREME_MIN_FLOW_BPS;
-        cfg.cashToExtremeConfirmPeriods = V2_CASH_TO_EXTREME_CONFIRM_PERIODS;
-        cfg.extremeHoldPeriods = V2_EXTREME_HOLD_PERIODS;
-        cfg.extremeToCashMaxFlowBps = V2_EXTREME_TO_CASH_MAX_FLOW_BPS;
-        cfg.extremeToCashConfirmPeriods = V2_EXTREME_TO_CASH_CONFIRM_PERIODS;
-        cfg.cashToFloorMaxFlowBps = V2_CASH_TO_FLOOR_MAX_FLOW_BPS;
-        cfg.cashToFloorConfirmPeriods = V2_CASH_TO_FLOOR_CONFIRM_PERIODS;
-        cfg.emergencyToFloorMaxCloseVolume = V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME;
-        cfg.emergencyToFloorConfirmPeriods = V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS;
+        cfg.enterCashMinVolume = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
+        cfg.enterCashEmaRatioPct = V2_FLOOR_TO_CASH_MIN_FLOW_BPS;
+        cfg.holdCashPeriods = V2_CASH_HOLD_PERIODS;
+        cfg.enterExtremeMinVolume = V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME;
+        cfg.enterExtremeEmaRatioPct = V2_CASH_TO_EXTREME_MIN_FLOW_BPS;
+        cfg.enterExtremeConfirmPeriods = V2_CASH_TO_EXTREME_CONFIRM_PERIODS;
+        cfg.holdExtremePeriods = V2_EXTREME_HOLD_PERIODS;
+        cfg.exitExtremeEmaRatioPct = V2_EXTREME_TO_CASH_MAX_FLOW_BPS;
+        cfg.exitExtremeConfirmPeriods = V2_EXTREME_TO_CASH_CONFIRM_PERIODS;
+        cfg.exitCashEmaRatioPct = V2_CASH_TO_FLOOR_MAX_FLOW_BPS;
+        cfg.exitCashConfirmPeriods = V2_CASH_TO_FLOOR_CONFIRM_PERIODS;
+        cfg.lowVolumeReset = V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME;
+        cfg.lowVolumeResetPeriods = V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS;
     }
 }

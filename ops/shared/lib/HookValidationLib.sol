@@ -89,7 +89,7 @@ library HookValidationLib {
             return validation;
         }
 
-        if (hook.minCountedSwapVolume() != cfg.minCountedSwapVolume) {
+        if (hook.dustSwapThreshold() != cfg.dustSwapThreshold) {
             validation.ok = false;
             validation.reason = "hook min counted swap mismatch";
             return validation;
@@ -106,7 +106,7 @@ library HookValidationLib {
 
         if (
             hook.periodSeconds() != cfg.periodSeconds || hook.emaPeriods() != cfg.emaPeriods
-                || hook.lullResetSeconds() != cfg.lullResetSeconds
+                || hook.idleResetSeconds() != cfg.idleResetSeconds
         ) {
             validation.ok = false;
             validation.reason = "hook timing config mismatch";
@@ -114,19 +114,19 @@ library HookValidationLib {
         }
 
         if (
-            hook.floorToCashMinCloseVolume() != cfg.floorToCashMinCloseVolume
-                || hook.floorToCashMinFlowBps() != cfg.floorToCashMinFlowBps
-                || hook.cashHoldPeriods() != cfg.cashHoldPeriods
-                || hook.cashToExtremeMinCloseVolume() != cfg.cashToExtremeMinCloseVolume
-                || hook.cashToExtremeMinFlowBps() != cfg.cashToExtremeMinFlowBps
-                || hook.cashToExtremeConfirmPeriods() != cfg.cashToExtremeConfirmPeriods
-                || hook.extremeHoldPeriods() != cfg.extremeHoldPeriods
-                || hook.extremeToCashMaxFlowBps() != cfg.extremeToCashMaxFlowBps
-                || hook.extremeToCashConfirmPeriods() != cfg.extremeToCashConfirmPeriods
-                || hook.cashToFloorMaxFlowBps() != cfg.cashToFloorMaxFlowBps
-                || hook.cashToFloorConfirmPeriods() != cfg.cashToFloorConfirmPeriods
-                || hook.emergencyToFloorMaxCloseVolume() != cfg.emergencyToFloorMaxCloseVolume
-                || hook.emergencyToFloorConfirmPeriods() != cfg.emergencyToFloorConfirmPeriods
+            hook.enterCashMinVolume() != cfg.enterCashMinVolume
+                || hook.enterCashEmaRatioPct() != cfg.enterCashEmaRatioPct
+                || hook.holdCashPeriods() != cfg.holdCashPeriods
+                || hook.enterExtremeMinVolume() != cfg.enterExtremeMinVolume
+                || hook.enterExtremeEmaRatioPct() != cfg.enterExtremeEmaRatioPct
+                || hook.enterExtremeConfirmPeriods() != cfg.enterExtremeConfirmPeriods
+                || hook.holdExtremePeriods() != cfg.holdExtremePeriods
+                || hook.exitExtremeEmaRatioPct() != cfg.exitExtremeEmaRatioPct
+                || hook.exitExtremeConfirmPeriods() != cfg.exitExtremeConfirmPeriods
+                || hook.exitCashEmaRatioPct() != cfg.exitCashEmaRatioPct
+                || hook.exitCashConfirmPeriods() != cfg.exitCashConfirmPeriods
+                || hook.lowVolumeReset() != cfg.lowVolumeReset
+                || hook.lowVolumeResetPeriods() != cfg.lowVolumeResetPeriods
         ) {
             validation.ok = false;
             validation.reason = "hook controller config mismatch";
@@ -140,7 +140,7 @@ library HookValidationLib {
             return validation;
         }
 
-        (bool hasPendingMinCountedSwap,) = hook.pendingMinCountedSwapVolumeChange();
+        (bool hasPendingMinCountedSwap,) = hook.pendingDustSwapThresholdChange();
         if (hasPendingMinCountedSwap) {
             validation.ok = false;
             validation.reason = "hook pending min counted swap change exists";
@@ -184,26 +184,26 @@ interface IVolumeHook {
     function owner() external view returns (address);
     function pendingOwner() external view returns (address);
     function hookFeePercent() external view returns (uint16);
-    function minCountedSwapVolume() external view returns (uint64);
+    function dustSwapThreshold() external view returns (uint64);
     function pendingHookFeePercentChange() external view returns (bool, uint16, uint64);
-    function pendingMinCountedSwapVolumeChange() external view returns (bool, uint64);
+    function pendingDustSwapThresholdChange() external view returns (bool, uint64);
     function floorFee() external view returns (uint24);
     function cashFee() external view returns (uint24);
     function extremeFee() external view returns (uint24);
     function periodSeconds() external view returns (uint32);
     function emaPeriods() external view returns (uint8);
-    function lullResetSeconds() external view returns (uint32);
-    function floorToCashMinCloseVolume() external view returns (uint64);
-    function floorToCashMinFlowBps() external view returns (uint16);
-    function cashHoldPeriods() external view returns (uint8);
-    function cashToExtremeMinCloseVolume() external view returns (uint64);
-    function cashToExtremeMinFlowBps() external view returns (uint16);
-    function cashToExtremeConfirmPeriods() external view returns (uint8);
-    function extremeHoldPeriods() external view returns (uint8);
-    function extremeToCashMaxFlowBps() external view returns (uint16);
-    function extremeToCashConfirmPeriods() external view returns (uint8);
-    function cashToFloorMaxFlowBps() external view returns (uint16);
-    function cashToFloorConfirmPeriods() external view returns (uint8);
-    function emergencyToFloorMaxCloseVolume() external view returns (uint64);
-    function emergencyToFloorConfirmPeriods() external view returns (uint8);
+    function idleResetSeconds() external view returns (uint32);
+    function enterCashMinVolume() external view returns (uint64);
+    function enterCashEmaRatioPct() external view returns (uint16);
+    function holdCashPeriods() external view returns (uint8);
+    function enterExtremeMinVolume() external view returns (uint64);
+    function enterExtremeEmaRatioPct() external view returns (uint16);
+    function enterExtremeConfirmPeriods() external view returns (uint8);
+    function holdExtremePeriods() external view returns (uint8);
+    function exitExtremeEmaRatioPct() external view returns (uint16);
+    function exitExtremeConfirmPeriods() external view returns (uint8);
+    function exitCashEmaRatioPct() external view returns (uint16);
+    function exitCashConfirmPeriods() external view returns (uint8);
+    function lowVolumeReset() external view returns (uint64);
+    function lowVolumeResetPeriods() external view returns (uint8);
 }

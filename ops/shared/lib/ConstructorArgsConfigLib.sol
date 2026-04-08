@@ -21,22 +21,22 @@ library ConstructorArgsConfigLib {
             uint24 extremeFeePips,
             uint32 periodSeconds,
             uint8 emaPeriods,
-            uint32 lullResetSeconds,
+            uint32 idleResetSeconds,
             address owner,
             uint16 hookFeePercent,
-            uint64 floorToCashMinCloseVolume,
-            uint16 floorToCashMinFlowBps,
-            uint8 cashHoldPeriods,
-            uint64 cashToExtremeMinCloseVolume,
-            uint16 cashToExtremeMinFlowBps,
-            uint8 cashToExtremeConfirmPeriods,
-            uint8 extremeHoldPeriods,
-            uint16 extremeToCashMaxFlowBps,
-            uint8 extremeToCashConfirmPeriods,
-            uint16 cashToFloorMaxFlowBps,
-            uint8 cashToFloorConfirmPeriods,
-            uint64 emergencyToFloorMaxCloseVolume,
-            uint8 emergencyToFloorConfirmPeriods
+            uint64 enterCashMinVolume,
+            uint16 enterCashEmaRatioPct,
+            uint8 holdCashPeriods,
+            uint64 enterExtremeMinVolume,
+            uint16 enterExtremeEmaRatioPct,
+            uint8 enterExtremeConfirmPeriods,
+            uint8 holdExtremePeriods,
+            uint16 exitExtremeEmaRatioPct,
+            uint8 exitExtremeConfirmPeriods,
+            uint16 exitCashEmaRatioPct,
+            uint8 exitCashConfirmPeriods,
+            uint64 lowVolumeReset,
+            uint8 lowVolumeResetPeriods
         ) = abi.decode(
             constructorArgs,
             (
@@ -82,20 +82,20 @@ library ConstructorArgsConfigLib {
         cfg.extremeFeePips = extremeFeePips;
         cfg.periodSeconds = periodSeconds;
         cfg.emaPeriods = emaPeriods;
-        cfg.lullResetSeconds = lullResetSeconds;
+        cfg.idleResetSeconds = idleResetSeconds;
         cfg.hookFeePercent = hookFeePercent;
-        cfg.floorToCashMinCloseVolume = floorToCashMinCloseVolume;
-        cfg.floorToCashMinFlowBps = floorToCashMinFlowBps;
-        cfg.cashHoldPeriods = cashHoldPeriods;
-        cfg.cashToExtremeMinCloseVolume = cashToExtremeMinCloseVolume;
-        cfg.cashToExtremeMinFlowBps = cashToExtremeMinFlowBps;
-        cfg.cashToExtremeConfirmPeriods = cashToExtremeConfirmPeriods;
-        cfg.extremeHoldPeriods = extremeHoldPeriods;
-        cfg.extremeToCashMaxFlowBps = extremeToCashMaxFlowBps;
-        cfg.extremeToCashConfirmPeriods = extremeToCashConfirmPeriods;
-        cfg.cashToFloorMaxFlowBps = cashToFloorMaxFlowBps;
-        cfg.cashToFloorConfirmPeriods = cashToFloorConfirmPeriods;
-        cfg.emergencyToFloorMaxCloseVolume = emergencyToFloorMaxCloseVolume;
-        cfg.emergencyToFloorConfirmPeriods = emergencyToFloorConfirmPeriods;
+        cfg.enterCashMinVolume = enterCashMinVolume;
+        cfg.enterCashEmaRatioPct = enterCashEmaRatioPct;
+        cfg.holdCashPeriods = holdCashPeriods;
+        cfg.enterExtremeMinVolume = enterExtremeMinVolume;
+        cfg.enterExtremeEmaRatioPct = enterExtremeEmaRatioPct;
+        cfg.enterExtremeConfirmPeriods = enterExtremeConfirmPeriods;
+        cfg.holdExtremePeriods = holdExtremePeriods;
+        cfg.exitExtremeEmaRatioPct = exitExtremeEmaRatioPct;
+        cfg.exitExtremeConfirmPeriods = exitExtremeConfirmPeriods;
+        cfg.exitCashEmaRatioPct = exitCashEmaRatioPct;
+        cfg.exitCashConfirmPeriods = exitCashConfirmPeriods;
+        cfg.lowVolumeReset = lowVolumeReset;
+        cfg.lowVolumeResetPeriods = lowVolumeResetPeriods;
     }
 }

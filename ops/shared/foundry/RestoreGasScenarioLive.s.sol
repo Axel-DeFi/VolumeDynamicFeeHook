@@ -29,7 +29,7 @@ contract RestoreGasScenarioLive is LiveOpsBase {
 
         uint32 originalPeriodSeconds = abi.decode(vm.parseJson(snapshot, ".periodSeconds"), (uint32));
         uint8 originalEmaPeriods = abi.decode(vm.parseJson(snapshot, ".emaPeriods"), (uint8));
-        uint32 originalLullResetSeconds = abi.decode(vm.parseJson(snapshot, ".lullResetSeconds"), (uint32));
+        uint32 originalIdleResetSeconds = abi.decode(vm.parseJson(snapshot, ".idleResetSeconds"), (uint32));
         bool wasPaused = abi.decode(vm.parseJson(snapshot, ".wasPaused"), (bool));
 
         VolumeDynamicFeeHook hook = VolumeDynamicFeeHook(payable(cfg.hookAddress));
@@ -40,7 +40,7 @@ contract RestoreGasScenarioLive is LiveOpsBase {
         if (!hook.isPaused()) {
             hook.pause();
         }
-        hook.setTimingSettings(originalPeriodSeconds, originalEmaPeriods, originalLullResetSeconds);
+        hook.setTimingSettings(originalPeriodSeconds, originalEmaPeriods, originalIdleResetSeconds);
         if (!wasPaused) {
             hook.unpause();
         }

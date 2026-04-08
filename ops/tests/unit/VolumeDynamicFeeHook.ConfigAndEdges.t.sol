@@ -30,22 +30,22 @@ contract VolumeDynamicFeeHookConfigHarness is VolumeDynamicFeeHook {
         uint24 _extremeFee,
         uint32 _periodSeconds,
         uint8 _emaPeriods,
-        uint32 _lullResetSeconds,
+        uint32 _idleResetSeconds,
         address ownerAddr,
         uint16 hookFeePercent,
-        uint64 _floorToCashMinCloseVolume,
-        uint16 _floorToCashMinFlowBps,
-        uint8 _cashHoldPeriods,
-        uint64 _cashToExtremeMinCloseVolume,
-        uint16 _cashToExtremeMinFlowBps,
-        uint8 _cashToExtremeConfirmPeriods,
-        uint8 _extremeHoldPeriods,
-        uint16 _extremeToCashMaxFlowBps,
-        uint8 _extremeToCashConfirmPeriods,
-        uint16 _cashToFloorMaxFlowBps,
-        uint8 _cashToFloorConfirmPeriods,
-        uint64 _emergencyToFloorMaxCloseVolume,
-        uint8 _emergencyToFloorConfirmPeriods
+        uint64 _enterCashMinVolume,
+        uint16 _enterCashEmaRatioPct,
+        uint8 _holdCashPeriods,
+        uint64 _enterExtremeMinVolume,
+        uint16 _enterExtremeEmaRatioPct,
+        uint8 _enterExtremeConfirmPeriods,
+        uint8 _holdExtremePeriods,
+        uint16 _exitExtremeEmaRatioPct,
+        uint8 _exitExtremeConfirmPeriods,
+        uint16 _exitCashEmaRatioPct,
+        uint8 _exitCashConfirmPeriods,
+        uint64 _lowVolumeReset,
+        uint8 _lowVolumeResetPeriods
     )
         VolumeDynamicFeeHook(
             _poolManager,
@@ -59,22 +59,22 @@ contract VolumeDynamicFeeHookConfigHarness is VolumeDynamicFeeHook {
             _extremeFee,
             _periodSeconds,
             _emaPeriods,
-            _lullResetSeconds,
+            _idleResetSeconds,
             ownerAddr,
             hookFeePercent,
-            _floorToCashMinCloseVolume,
-            _floorToCashMinFlowBps,
-            _cashHoldPeriods,
-            _cashToExtremeMinCloseVolume,
-            _cashToExtremeMinFlowBps,
-            _cashToExtremeConfirmPeriods,
-            _extremeHoldPeriods,
-            _extremeToCashMaxFlowBps,
-            _extremeToCashConfirmPeriods,
-            _cashToFloorMaxFlowBps,
-            _cashToFloorConfirmPeriods,
-            _emergencyToFloorMaxCloseVolume,
-            _emergencyToFloorConfirmPeriods
+            _enterCashMinVolume,
+            _enterCashEmaRatioPct,
+            _holdCashPeriods,
+            _enterExtremeMinVolume,
+            _enterExtremeEmaRatioPct,
+            _enterExtremeConfirmPeriods,
+            _holdExtremePeriods,
+            _exitExtremeEmaRatioPct,
+            _exitExtremeConfirmPeriods,
+            _exitCashEmaRatioPct,
+            _exitCashConfirmPeriods,
+            _lowVolumeReset,
+            _lowVolumeResetPeriods
         )
     {}
 
@@ -104,11 +104,11 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
         uint24 extremeFee;
         uint32 periodSeconds;
         uint8 emaPeriods;
-        uint32 lullResetSeconds;
+        uint32 idleResetSeconds;
         address owner;
         uint16 hookFeePercent;
-        uint64 emergencyToFloorMaxCloseVolume;
-        uint8 emergencyToFloorConfirmPeriods;
+        uint64 lowVolumeReset;
+        uint8 lowVolumeResetPeriods;
     }
 
     function setUp() public {
@@ -132,11 +132,11 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             extremeFee: V2_DEFAULT_EXTREME_FEE,
             periodSeconds: PERIOD_SECONDS,
             emaPeriods: 8,
-            lullResetSeconds: LULL_RESET_SECONDS,
+            idleResetSeconds: LULL_RESET_SECONDS,
             owner: address(this),
             hookFeePercent: V2_INITIAL_HOOK_FEE_PERCENT,
-            emergencyToFloorMaxCloseVolume: V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            emergencyToFloorConfirmPeriods: V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            lowVolumeReset: V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
+            lowVolumeResetPeriods: V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
         });
     }
 
@@ -153,7 +153,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             cfg.extremeFee,
             cfg.periodSeconds,
             cfg.emaPeriods,
-            cfg.lullResetSeconds,
+            cfg.idleResetSeconds,
             cfg.owner,
             cfg.hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
@@ -167,8 +167,8 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
             V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
             V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
-            cfg.emergencyToFloorMaxCloseVolume,
-            cfg.emergencyToFloorConfirmPeriods
+            cfg.lowVolumeReset,
+            cfg.lowVolumeResetPeriods
         );
     }
 
@@ -208,7 +208,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             cfg.extremeFee,
             cfg.periodSeconds,
             cfg.emaPeriods,
-            cfg.lullResetSeconds,
+            cfg.idleResetSeconds,
             cfg.owner,
             cfg.hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
@@ -229,7 +229,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
 
     function test_constructor_reverts_when_lullReset_equals_period() public {
         DeployCfg memory cfg = _defaultCfg();
-        cfg.lullResetSeconds = cfg.periodSeconds;
+        cfg.idleResetSeconds = cfg.periodSeconds;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         _deploy(cfg);
@@ -274,7 +274,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
 
     function test_constructor_reverts_when_emergency_floor_threshold_is_zero() public {
         DeployCfg memory cfg = _defaultCfg();
-        cfg.emergencyToFloorMaxCloseVolume = 0;
+        cfg.lowVolumeReset = 0;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         _deploy(cfg);
@@ -282,7 +282,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
 
     function test_constructor_reverts_when_emergency_floor_threshold_is_not_below_cash_threshold() public {
         DeployCfg memory cfg = _defaultCfg();
-        cfg.emergencyToFloorMaxCloseVolume = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
+        cfg.lowVolumeReset = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         _deploy(cfg);
@@ -290,10 +290,10 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
 
     function test_constructor_accepts_positive_emergency_floor_threshold() public {
         DeployCfg memory cfg = _defaultCfg();
-        cfg.emergencyToFloorMaxCloseVolume = 1;
+        cfg.lowVolumeReset = 1;
 
         VolumeDynamicFeeHookConfigHarness h = _deploy(cfg);
-        assertEq(h.emergencyToFloorMaxCloseVolume(), 1);
+        assertEq(h.lowVolumeReset(), 1);
     }
 
     function test_constructor_reverts_on_zero_owner() public {
@@ -379,39 +379,39 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
     }
 
     function test_scheduleMinCountedSwapVolume_rejects_parallel_pending_update() public {
-        hook.scheduleMinCountedSwapVolumeChange(4_500_000);
+        hook.scheduleDustSwapThresholdChange(4_500_000);
 
-        vm.expectRevert(VolumeDynamicFeeHook.PendingMinCountedSwapVolumeChangeExists.selector);
-        hook.scheduleMinCountedSwapVolumeChange(5_000_000);
+        vm.expectRevert(VolumeDynamicFeeHook.PendingDustSwapThresholdChangeExists.selector);
+        hook.scheduleDustSwapThresholdChange(5_000_000);
     }
 
     function test_scheduleMinCountedSwapVolume_reverts_below_min_bound() public {
-        vm.expectRevert(VolumeDynamicFeeHook.InvalidMinCountedSwapVolume.selector);
-        hook.scheduleMinCountedSwapVolumeChange(999_999);
+        vm.expectRevert(VolumeDynamicFeeHook.InvalidDustSwapThreshold.selector);
+        hook.scheduleDustSwapThresholdChange(999_999);
     }
 
     function test_scheduleMinCountedSwapVolume_reverts_above_max_bound() public {
-        vm.expectRevert(VolumeDynamicFeeHook.InvalidMinCountedSwapVolume.selector);
-        hook.scheduleMinCountedSwapVolumeChange(10_000_001);
+        vm.expectRevert(VolumeDynamicFeeHook.InvalidDustSwapThreshold.selector);
+        hook.scheduleDustSwapThresholdChange(10_000_001);
     }
 
     function test_scheduleMinCountedSwapVolume_accepts_range_bounds() public {
-        hook.scheduleMinCountedSwapVolumeChange(1_000_000);
-        (bool exists, uint64 nextValue) = hook.pendingMinCountedSwapVolumeChange();
+        hook.scheduleDustSwapThresholdChange(1_000_000);
+        (bool exists, uint64 nextValue) = hook.pendingDustSwapThresholdChange();
         assertTrue(exists);
         assertEq(nextValue, 1_000_000);
 
-        hook.cancelMinCountedSwapVolumeChange();
+        hook.cancelDustSwapThresholdChange();
 
-        hook.scheduleMinCountedSwapVolumeChange(10_000_000);
-        (exists, nextValue) = hook.pendingMinCountedSwapVolumeChange();
+        hook.scheduleDustSwapThresholdChange(10_000_000);
+        (exists, nextValue) = hook.pendingDustSwapThresholdChange();
         assertTrue(exists);
         assertEq(nextValue, 10_000_000);
     }
 
-    function test_default_minCountedSwapVolume_is_4e6() public view {
-        assertEq(hook.minCountedSwapVolume(), 4_000_000);
-        assertEq(hook.minCountedSwapVolume(), hook.DEFAULT_MIN_COUNTED_SWAP_VOLUME());
+    function test_default_dustSwapThreshold_is_4e6() public view {
+        assertEq(hook.dustSwapThreshold(), 4_000_000);
+        assertEq(hook.dustSwapThreshold(), hook.DEFAULT_DUST_SWAP_THRESHOLD());
     }
 
     function test_modeFees_are_exposed_explicitly() public view {
