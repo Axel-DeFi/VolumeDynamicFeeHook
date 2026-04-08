@@ -648,7 +648,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     ) internal returns (bool handled) {
         if (ctx.elapsed < _config.lullResetSeconds) return false;
 
-        uint8 oldFeeIdx = ctx.feeIdx;
+        uint8 prevFeeIdx = ctx.feeIdx;
         uint64 closedPeriodStart = ctx.periodStart;
         uint96 emaBefore = ctx.emaVolScaled;
         uint16 stateBitsBefore = _packControllerTransitionCounters(
@@ -678,19 +678,19 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             ctx.emergencyStreak
         );
 
-        uint24 oldFee = _modeFee(oldFeeIdx);
-        uint24 newFee = _modeFee(ctx.feeIdx);
-        if (ctx.feeIdx != oldFeeIdx) {
-            poolManager.updateDynamicLPFee(key, newFee);
-            _emitFeeUpdate(newFee, ctx.feeIdx, 0, 0);
+        uint24 prevFee = _modeFee(prevFeeIdx);
+        uint24 activeFee = _modeFee(ctx.feeIdx);
+        if (ctx.feeIdx != prevFeeIdx) {
+            poolManager.updateDynamicLPFee(key, activeFee);
+            _emitFeeUpdate(activeFee, ctx.feeIdx, 0, 0);
         }
 
         _emitPeriodTrace(
             PeriodTrace({
                 periodStart: closedPeriodStart,
-                fromFee: oldFee,
-                fromFeeIdx: oldFeeIdx,
-                toFee: newFee,
+                fromFee: prevFee,
+                fromFeeIdx: prevFeeIdx,
+                toFee: activeFee,
                 toFeeIdx: ctx.feeIdx,
                 periodVolume: 0,
                 emaVolumeBefore: emaBefore,
@@ -702,7 +702,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
                 reasonCode: REASON_LULL_RESET
             })
         );
-        emit LullReset(newFee, ctx.feeIdx);
+        emit LullReset(activeFee, ctx.feeIdx);
         return true;
     }
 
@@ -716,7 +716,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ctx.closeVolForEvent = closeVol0;
         uint64 periodStart0 = ctx.periodStart;
 
-        uint8 oldFeeIdx = ctx.feeIdx;
+        uint8 prevFeeIdx = ctx.feeIdx;
 
         uint96 ema = ctx.emaVolScaled;
         uint8 f = ctx.feeIdx;
@@ -770,7 +770,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ctx.upExtremeStreak = upStreak;
         ctx.downStreak = down;
         ctx.emergencyStreak = emergency;
-        ctx.feeChanged = ctx.feeIdx != oldFeeIdx;
+        ctx.feeChanged = ctx.feeIdx != prevFeeIdx;
 
         ctx.periodStart = ctx.periodStart + periods * uint64(_config.periodSeconds);
 
@@ -1148,7 +1148,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         whenPaused
     {
         (, uint96 emaVolScaled, uint64 periodStart, uint8 feeIdx, bool paused_,,,,) = _unpackState(_state);
-        uint24 oldActiveFee = _modeFee(feeIdx);
+        uint24 prevActiveFee = _modeFee(feeIdx);
 
         _setModeFeesInternal(floorFee_, cashFee_, extremeFee_);
         emit ModeFeesUpdated(floorFee_, cashFee_, extremeFee_);
@@ -1158,10 +1158,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint64 nextPeriodStart = _now64();
         _state = _packState(0, emaVolScaled, nextPeriodStart, feeIdx, paused_, 0, 0, 0, 0);
 
-        uint24 newActiveFee = _modeFee(feeIdx);
-        if (newActiveFee != oldActiveFee) {
-            poolManager.updateDynamicLPFee(_poolKey(), newActiveFee);
-            emit FeeUpdated(newActiveFee, feeIdx, 0, emaVolScaled);
+        uint24 activeFee = _modeFee(feeIdx);
+        if (activeFee != prevActiveFee) {
+            poolManager.updateDynamicLPFee(_poolKey(), activeFee);
+            emit FeeUpdated(activeFee, feeIdx, 0, emaVolScaled);
         }
     }
 
@@ -1222,7 +1222,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ) = _unpackState(_state);
 
         bool timeScaleChanged = periodSeconds_ != _config.periodSeconds || emaPeriods_ != _config.emaPeriods;
-        uint24 oldActiveFee = _modeFee(feeIdx);
+        uint24 prevActiveFee = _modeFee(feeIdx);
 
         _setTimingSettingsInternal(periodSeconds_, emaPeriods_, lullResetSeconds_);
         emit TimingSettingsUpdated(periodSeconds_, emaPeriods_, lullResetSeconds_);
@@ -1251,10 +1251,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         );
 
         if (timeScaleChanged) {
-            uint24 newActiveFee = _modeFee(feeIdx);
-            if (newActiveFee != oldActiveFee) {
-                poolManager.updateDynamicLPFee(_poolKey(), newActiveFee);
-                emit FeeUpdated(newActiveFee, feeIdx, 0, emaVolScaled);
+            uint24 activeFee = _modeFee(feeIdx);
+            if (activeFee != prevActiveFee) {
+                poolManager.updateDynamicLPFee(_poolKey(), activeFee);
+                emit FeeUpdated(activeFee, feeIdx, 0, emaVolScaled);
             }
         }
     }
@@ -1486,14 +1486,14 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     function _emergencyReset(uint8 targetFeeIdx, bool toFloor) internal {
-        (,, uint64 periodStart, uint8 oldFeeIdx, bool paused_,,,,) = _unpackState(_state);
+        (,, uint64 periodStart, uint8 prevFeeIdx, bool paused_,,,,) = _unpackState(_state);
 
         if (periodStart == 0) revert NotInitialized();
 
         uint64 nowTs = _now64();
         _state = _packState(0, 0, nowTs, targetFeeIdx, paused_, 0, 0, 0, 0);
 
-        if (oldFeeIdx != targetFeeIdx) {
+        if (prevFeeIdx != targetFeeIdx) {
             uint24 targetFee = _modeFee(targetFeeIdx);
             poolManager.updateDynamicLPFee(_poolKey(), targetFee);
             emit FeeUpdated(targetFee, targetFeeIdx, 0, 0);
