@@ -14,25 +14,25 @@ library PoolStateLib {
         snap.paused = hook.isPaused();
         snap.initialized = (snap.periodStart != 0);
 
-        try hook.currentFeeBips() returns (uint24 fee) {
-            snap.currentFeeBips = fee;
+        try hook.currentFeePips() returns (uint24 fee) {
+            snap.currentFeePips = fee;
         } catch {
-            snap.currentFeeBips = 0;
+            snap.currentFeePips = 0;
         }
         try hook.floorFee() returns (uint24 fee) {
-            snap.floorFeeBips = fee;
+            snap.floorFeePips = fee;
         } catch {
-            snap.floorFeeBips = 0;
+            snap.floorFeePips = 0;
         }
         try hook.cashFee() returns (uint24 fee) {
-            snap.cashFeeBips = fee;
+            snap.cashFeePips = fee;
         } catch {
-            snap.cashFeeBips = 0;
+            snap.cashFeePips = 0;
         }
         try hook.extremeFee() returns (uint24 fee) {
-            snap.extremeFeeBips = fee;
+            snap.extremeFeePips = fee;
         } catch {
-            snap.extremeFeeBips = 0;
+            snap.extremeFeePips = 0;
         }
     }
 
@@ -54,7 +54,7 @@ library PoolStateLib {
 interface IHookState {
     function unpackedState() external view returns (uint64, uint96, uint64, uint8);
     function isPaused() external view returns (bool);
-    function currentFeeBips() external view returns (uint24);
+    function currentFeePips() external view returns (uint24);
     function floorFee() external view returns (uint24);
     function cashFee() external view returns (uint24);
     function extremeFee() external view returns (uint24);

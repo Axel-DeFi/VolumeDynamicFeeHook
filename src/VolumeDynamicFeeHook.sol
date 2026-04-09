@@ -810,8 +810,9 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return ((_state >> PAUSED_BIT) & 1) == 1;
     }
 
-    /// @notice Returns currently active LP fee tier.
-    function currentFeeBips() external view returns (uint24) {
+    /// @notice Returns currently active LP fee in Uniswap pips.
+    /// @dev Uses the same raw LP-fee unit as the constructor fee params and `LPFeeLibrary`.
+    function currentFeePips() external view returns (uint24) {
         (,, uint64 periodStart, uint8 feeIdx,,,,,) = _unpackState(_state);
         if (periodStart == 0) revert NotInitialized();
         return _modeFee(feeIdx);

@@ -76,7 +76,7 @@ library JsonReportLib {
             ",",
             _kv("feeIdx", vm.toString(snapshot.feeIdx)),
             ",",
-            _kv("currentFeeBips", vm.toString(snapshot.currentFeeBips)),
+            _kv("currentFeePips", vm.toString(snapshot.currentFeePips)),
             "}"
         );
         vm.writeFile(path, json);

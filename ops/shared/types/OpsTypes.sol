@@ -115,10 +115,10 @@ library OpsTypes {
         uint96 emaVolUsd6Scaled;
         uint64 periodStart;
         uint8 feeIdx;
-        uint24 currentFeeBips;
-        uint24 floorFeeBips;
-        uint24 cashFeeBips;
-        uint24 extremeFeeBips;
+        uint24 currentFeePips;
+        uint24 floorFeePips;
+        uint24 cashFeePips;
+        uint24 extremeFeePips;
     }
 
     struct HookValidation {
