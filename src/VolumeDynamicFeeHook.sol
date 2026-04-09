@@ -274,7 +274,8 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     event OwnerTransferCancelled(address indexed cancelledPendingOwner);
 
     /// @notice Emitted when pending owner accepts ownership.
-    event OwnerTransferAccepted(address indexed previousOwner, address indexed newOwner);
+    /// @param pendingCleared True if a pending hook fee change was cleared during ownership transfer.
+    event OwnerTransferAccepted(address indexed previousOwner, address indexed newOwner, bool pendingCleared);
 
     /// @notice Emitted when explicit mode fees are updated.
     event ModeFeesUpdated(uint24 floorFee, uint24 cashFee, uint24 extremeFee);
@@ -309,14 +310,8 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Emitted when hook fee percent is executed and applied.
     event HookFeeChanged(uint16 oldHookFee, uint16 newHookFee);
 
-    /// @notice Emitted when a dust-swap threshold update is scheduled.
-    event DustSwapThresholdChangeScheduled(uint64 newDustSwapThreshold);
-
-    /// @notice Emitted when scheduled dust-swap threshold update is cancelled.
-    event DustSwapThresholdChangeCancelled(uint64 cancelledDustSwapThreshold);
-
-    /// @notice Emitted when dust-swap threshold is applied.
-    event DustSwapThresholdChanged(uint64 oldDustSwapThreshold, uint64 newDustSwapThreshold);
+    /// @notice Emitted when dust-swap threshold is updated.
+    event DustSwapThresholdChanged(uint64 previousValue, uint64 newValue);
 
     /// @notice Emitted when paused emergency reset sets controller to floor mode.
     event EmergencyResetToFloorApplied(uint8 feeIdx, uint64 periodStart, uint96 emaVolumeScaled);
@@ -359,8 +354,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     error HookFeeChangeNotReady(uint64 executeAfter);
 
     error InvalidDustSwapThreshold();
-    error PendingDustSwapThresholdChangeExists();
-    error NoPendingDustSwapThresholdChange();
 
     error InvalidUnlockData();
 
@@ -376,9 +369,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     bool private _hasPendingHookFeeChange;
     uint16 private _pendingHookFeePercent;
     uint64 private _pendingHookFeeExecuteAfter;
-
-    bool private _hasPendingDustSwapThresholdChange;
-    uint64 private _pendingDustSwapThreshold;
 
     // Packed controller state.
     uint256 private _state;
@@ -670,7 +660,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ctx.downStreak = 0;
         ctx.emergencyStreak = 0;
 
-        _activatePendingDustSwapThreshold();
         ctx.periodVol = _addSwapVolumeUsd6(0, delta);
 
         _state = _packState(
@@ -782,7 +771,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ctx.periodStart = ctx.periodStart + periods * uint64(_config.periodSeconds);
 
         ctx.periodVol = 0;
-        _activatePendingDustSwapThreshold();
     }
 
     /// @notice Adds current swap volume, persists packed state, and syncs the dynamic LP fee.
@@ -975,12 +963,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return (_hasPendingHookFeeChange, _pendingHookFeePercent, _pendingHookFeeExecuteAfter);
     }
 
-    /// @notice Returns pending dust-swap threshold update.
-    /// @dev This update path is intentionally timelock-free and activates on next period boundary only.
-    function pendingDustSwapThresholdChange() external view returns (bool exists, uint64 nextValue) {
-        return (_hasPendingDustSwapThresholdChange, _pendingDustSwapThreshold);
-    }
-
     /// @notice Returns grouped controller transition params.
     function getControllerSettings() external view returns (ControllerSettings memory p) {
         p = ControllerSettings({
@@ -1080,10 +1062,17 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (msg.sender != pending) revert NotPendingOwner();
 
         address oldOwner = _owner;
+        bool pendingCleared = _hasPendingHookFeeChange;
         _pendingOwner = address(0);
         _owner = pending;
 
-        emit OwnerTransferAccepted(oldOwner, pending);
+        if (pendingCleared) {
+            _hasPendingHookFeeChange = false;
+            _pendingHookFeePercent = 0;
+            _pendingHookFeeExecuteAfter = 0;
+        }
+
+        emit OwnerTransferAccepted(oldOwner, pending, pendingCleared);
         emit OwnerUpdated(oldOwner, pending);
     }
 
@@ -1130,29 +1119,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         emit HookFeeChanged(oldValue, newValue);
     }
 
-    /// @notice Schedules a new dust-swap threshold.
+    /// @notice Sets dust-swap threshold immediately.
     /// @dev Allowed range is `[1e6, 10e6]` in USD6 units.
-    /// @dev New value is applied only at the next period boundary in `afterSwap`.
-    /// @dev This path intentionally has no timelock; operations should use offchain recalibration discipline.
-    function scheduleDustSwapThresholdChange(uint64 newDustSwapThreshold_) external onlyOwner {
-        if (_hasPendingDustSwapThresholdChange) revert PendingDustSwapThresholdChangeExists();
-        _validateDustSwapThreshold(newDustSwapThreshold_);
-
-        _hasPendingDustSwapThresholdChange = true;
-        _pendingDustSwapThreshold = newDustSwapThreshold_;
-
-        emit DustSwapThresholdChangeScheduled(newDustSwapThreshold_);
-    }
-
-    /// @notice Cancels scheduled dust-swap threshold change.
-    function cancelDustSwapThresholdChange() external onlyOwner {
-        if (!_hasPendingDustSwapThresholdChange) revert NoPendingDustSwapThresholdChange();
-
-        uint64 cancelled = _pendingDustSwapThreshold;
-        _hasPendingDustSwapThresholdChange = false;
-        _pendingDustSwapThreshold = 0;
-
-        emit DustSwapThresholdChangeCancelled(cancelled);
+    function setDustSwapThreshold(uint64 newDustSwapThreshold) external onlyOwner {
+        _validateDustSwapThreshold(newDustSwapThreshold);
+        uint64 previousValue = _config.dustSwapThreshold;
+        _config.dustSwapThreshold = newDustSwapThreshold;
+        emit DustSwapThresholdChanged(previousValue, newDustSwapThreshold);
     }
 
     /// @notice Updates explicit mode fees while paused.
@@ -1494,21 +1467,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         } else {
             emit EmergencyResetToCashApplied(targetFeeIdx, nowTs, 0);
         }
-    }
-
-    /// @notice Activates pending telemetry threshold update.
-    /// @dev Called only on period rollover so threshold never changes mid-period.
-    function _activatePendingDustSwapThreshold() internal {
-        if (!_hasPendingDustSwapThresholdChange) return;
-
-        uint64 oldValue = _config.dustSwapThreshold;
-        uint64 newValue = _pendingDustSwapThreshold;
-
-        _hasPendingDustSwapThresholdChange = false;
-        _pendingDustSwapThreshold = 0;
-
-        _config.dustSwapThreshold = newValue;
-        emit DustSwapThresholdChanged(oldValue, newValue);
     }
 
     /// @notice Executes HookFee claim through PoolManager unlock callback flow.
