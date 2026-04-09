@@ -15,16 +15,12 @@ contract EnvLibBoundsHarness {
         return EnvLib.requirePipsFromPercent(key);
     }
 
-    function requireBpsFromPercent(string memory key) external view returns (uint16) {
-        return EnvLib.requireBpsFromPercent(key);
-    }
-
     function requirePercent(string memory key) external view returns (uint16) {
         return EnvLib.requirePercent(key);
     }
 
-    function requireUsd6FromUsd(string memory key) external view returns (uint64) {
-        return EnvLib.requireUsd6FromUsd(key);
+    function envOrBool(string memory key, bool fallbackValue) external view returns (bool) {
+        return EnvLib.envOrBool(key, fallbackValue);
     }
 
     function parseDecimalToScale(string memory raw, string memory key, uint8 scaleDecimals)
@@ -82,11 +78,6 @@ contract EnvLibBoundsTest is Test {
         assertEq(harness.parseDecimalToScale("1_234.56789", "EXAMPLE_USD", 6), 1_234_567_890);
     }
 
-    function test_require_bps_from_percent_parses_decimal_percent() public {
-        vm.setEnv("HOOK_FEE_PERCENT_EXAMPLE", "5.25");
-        assertEq(harness.requireBpsFromPercent("HOOK_FEE_PERCENT_EXAMPLE"), 525);
-    }
-
     function test_require_pips_from_percent_parses_decimal_percent() public {
         vm.setEnv("TEST_FLOOR_FEE_PERCENT", "0.04");
         assertEq(harness.requirePipsFromPercent("TEST_FLOOR_FEE_PERCENT"), 400);
@@ -102,9 +93,14 @@ contract EnvLibBoundsTest is Test {
         assertEq(harness.requirePercent("TEST_ENTER_CASH_EMA_RATIO_PERCENT"), 185);
     }
 
-    function test_require_usd6_from_usd_parses_decimal_dollars() public {
-        vm.setEnv("TEST_LOW_VOLUME_RESET_INPUT", "600.1250019");
-        assertEq(harness.requireUsd6FromUsd("TEST_LOW_VOLUME_RESET_INPUT"), 600_125_001);
+    function test_envOrBool_accepts_true_literal() public {
+        vm.setEnv("ALLOW_WEAK_HOLD_PERIODS", "true");
+        assertTrue(harness.envOrBool("ALLOW_WEAK_HOLD_PERIODS", false));
+    }
+
+    function test_envOrBool_accepts_numeric_true() public {
+        vm.setEnv("ALLOW_WEAK_HOLD_PERIODS", "1");
+        assertTrue(harness.envOrBool("ALLOW_WEAK_HOLD_PERIODS", false));
     }
 
     function test_checked_uint8_narrowing_reverts_on_overflow() public {

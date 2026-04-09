@@ -160,20 +160,6 @@ library EnvLib {
         return requireDecimalScaled(key, 18);
     }
 
-    function envOrBpsFromPercent(string memory key, uint16 fallbackValue)
-        internal
-        view
-        returns (uint16 value)
-    {
-        if (!hasKey(key)) return fallbackValue;
-        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 2), key);
-    }
-
-    function requireBpsFromPercent(string memory key) internal view returns (uint16 value) {
-        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
-        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 2), key);
-    }
-
     function envOrPipsFromPercent(string memory key, uint24 fallbackValue)
         internal
         view
@@ -198,23 +184,9 @@ library EnvLib {
         value = toUint16Checked(vm.envUint(key), key);
     }
 
-    function envOrUsd6FromUsd(string memory key, uint64 fallbackValue) internal view returns (uint64 value) {
-        if (!hasKey(key)) return fallbackValue;
-        value = toUint64Checked(parseDecimalToScale(vm.envString(key), key, 6), key);
-    }
-
-    function requireUsd6FromUsd(string memory key) internal view returns (uint64 value) {
-        if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
-        value = toUint64Checked(parseDecimalToScale(vm.envString(key), key, 6), key);
-    }
-
     function requireDecimalScaled(string memory key, uint8 scaleDecimals) internal view returns (uint256) {
         if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
         return parseDecimalToScale(vm.envString(key), key, scaleDecimals);
-    }
-
-    function parseDecimalToE18(string memory raw, string memory key) internal pure returns (uint256) {
-        return parseDecimalToScale(raw, key, 18);
     }
 
     function parseDecimalToScale(string memory raw, string memory key, uint8 scaleDecimals)
