@@ -65,11 +65,10 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 
 ### HookFee claim settlement
 
-- Use `claimHookFees(...)` / `claimAllHookFees(...)` as owner.
-- `claimAllHookFees(...)` has no recipient overload; full claim always pays to current `owner()`.
+- Use `claimHookFees()` as owner to claim full accrued balance.
+- Payout always goes to current `owner()`; no recipient override.
 - Payout path is PoolManager accounting withdrawal: `unlock` -> `burn` -> `take`.
 - Oversized payouts are chunked automatically so each `burn` / `take` fits PoolManager `int128` accounting bounds.
-- `claimHookFees(...)` requires `to == owner()`.
 - If pool includes native currency, recipient must be compatible with native payout from PoolManager sender context in the claim path.
 - Local preflight/deploy flow validates this compatibility before deployment/ensure.
 - If ownership changes later in a native-asset pool, keep this compatibility invariant.
@@ -93,10 +92,9 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 
 ### Emergency resets (paused-only)
 
-- `emergencyResetToFloor()`
-- `emergencyResetToCash()`
+- `emergencyReset(uint8 targetMode)` — `targetMode` must be `MODE_FLOOR` (0) or `MODE_CASH` (1).
 
-Both clear EMA/streaks/hold counters and restart period. `resetToCash` is default emergency option unless floor lockdown is explicitly required.
+Clears EMA/streaks/hold counters and restarts period. Cash is the default emergency target unless floor lockdown is explicitly required.
 If target tier already equals current tier, reset still applies but no `FeeUpdated` event is emitted.
 Monitoring must consume `EmergencyResetToFloorApplied` / `EmergencyResetToCashApplied` events.
 

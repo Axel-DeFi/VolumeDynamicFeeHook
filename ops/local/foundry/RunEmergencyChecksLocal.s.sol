@@ -26,7 +26,7 @@ contract RunEmergencyChecksLocal is Script {
         if (!hook.isPaused()) {
             hook.pause();
         }
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(hook.MODE_FLOOR());
         hook.unpause();
         vm.stopBroadcast();
 

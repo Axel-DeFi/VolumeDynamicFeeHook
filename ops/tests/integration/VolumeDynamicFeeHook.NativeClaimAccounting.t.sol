@@ -116,7 +116,7 @@ contract VolumeDynamicFeeHookNativeClaimAccountingIntegrationTest is
         liquidityRouter.modifyLiquidity{value: 1 ether}(key, addParams, "");
     }
 
-    function test_claimAllHookFees_nativeCurrency0_path_increases_owner_eth_balance() public {
+    function test_claimHookFees_nativeCurrency0_path_increases_owner_eth_balance() public {
         _swapExactInputToken1ForNative(9_000_000_000_000_000);
 
         (uint256 fees0, uint256 fees1) = hook.hookFeesAccrued();
@@ -126,7 +126,7 @@ contract VolumeDynamicFeeHookNativeClaimAccountingIntegrationTest is
 
         uint256 ownerBefore = address(this).balance;
 
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         uint256 ownerAfter = address(this).balance;
         assertEq(ownerAfter - ownerBefore, fees0);

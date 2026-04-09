@@ -80,11 +80,11 @@ contract CollectGasObservationsLocal is Script {
 
         // Paused emergency reset flow.
         hook.pause();
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(hook.MODE_FLOOR());
         hook.unpause();
 
         // Claim all currently accrued HookFees.
-        hook.claimAllHookFees();
+        hook.claimHookFees();
         vm.stopBroadcast();
     }
 

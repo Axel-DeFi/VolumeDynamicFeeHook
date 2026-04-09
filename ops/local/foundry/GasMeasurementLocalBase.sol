@@ -181,12 +181,12 @@ abstract contract GasMeasurementLocalBase is CommonBase {
         if (op == GasMeasurementLib.Operation.EmergencyResetToFloor) {
             _moveToCash();
             hook.pause();
-            hook.emergencyResetToFloor();
+            hook.emergencyReset(hook.MODE_FLOOR());
             return;
         }
         if (op == GasMeasurementLib.Operation.EmergencyResetToCash) {
             hook.pause();
-            hook.emergencyResetToCash();
+            hook.emergencyReset(hook.MODE_CASH());
             return;
         }
 
@@ -236,7 +236,7 @@ abstract contract GasMeasurementLocalBase is CommonBase {
 
     function _measureClaimAllHookFees() internal {
         _swapStable(_seedStableRaw());
-        hook.claimAllHookFees();
+        hook.claimHookFees();
     }
 
     function _moveToCash() internal {

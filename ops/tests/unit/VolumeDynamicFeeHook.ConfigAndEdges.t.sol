@@ -344,12 +344,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
         manager.callAfterInitialize(fresh, badKey);
     }
 
-    function test_claimHookFees_rejects_non_owner_recipient() public {
-        vm.expectRevert(VolumeDynamicFeeHook.InvalidRecipient.selector);
-        hook.claimHookFees(address(0x1234), 0, 0);
-    }
-
-    function test_claimAllHookFees_uses_current_owner_after_transfer() public {
+    function test_claimHookFees_uses_current_owner_after_transfer() public {
         manager.callAfterSwap(hook, key, toBalanceDelta(-10_000_000, 9_000_000));
         (, uint256 feesBeforeTransfer) = hook.hookFeesAccrued();
         assertGt(feesBeforeTransfer, 0, "precondition: accrued fees must exist");
@@ -360,11 +355,11 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
         hook.acceptOwner();
 
         vm.expectRevert(VolumeDynamicFeeHook.NotOwner.selector);
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         uint256 takeCountBefore = manager.takeCount();
         vm.prank(newOwner);
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         (, uint256 feesAfterClaim) = hook.hookFeesAccrued();
         assertEq(feesAfterClaim, 0, "new owner must claim prior accrual");

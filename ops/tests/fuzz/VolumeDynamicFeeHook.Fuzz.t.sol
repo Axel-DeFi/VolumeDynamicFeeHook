@@ -200,8 +200,8 @@ contract VolumeDynamicFeeHookFuzzTest is Test, VolumeDynamicFeeHookV2DeployHelpe
                 s.hook.unpause();
             } else {
                 if (s.hook.isPaused()) {
-                    if ((r & 1) == 0) s.hook.emergencyResetToFloor();
-                    else s.hook.emergencyResetToCash();
+                    if ((r & 1) == 0) s.hook.emergencyReset(s.hook.MODE_FLOOR());
+                    else s.hook.emergencyReset(s.hook.MODE_CASH());
                 }
             }
 

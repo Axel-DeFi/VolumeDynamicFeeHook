@@ -32,7 +32,7 @@ contract RunEmergencyChecksLive is LiveOpsBase {
         if (!hook.isPaused()) {
             hook.pause();
         }
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(hook.MODE_FLOOR());
         hook.unpause();
         vm.stopBroadcast();
 

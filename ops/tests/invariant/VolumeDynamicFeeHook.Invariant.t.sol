@@ -100,13 +100,13 @@ contract VolumeDynamicFeeHookHandler is Test {
     function opEmergencyFloor() external {
         require(initialized, "not init");
         if (!hook.isPaused()) return;
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(hook.MODE_FLOOR());
     }
 
     function opEmergencyCash() external {
         require(initialized, "not init");
         if (!hook.isPaused()) return;
-        hook.emergencyResetToCash();
+        hook.emergencyReset(hook.MODE_CASH());
     }
 
     function opScheduleHookFee(uint16 nextPercent) external {

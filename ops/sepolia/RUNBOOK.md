@@ -84,11 +84,10 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 
 ### HookFee claim settlement
 
-- Use `claimHookFees(...)` / `claimAllHookFees(...)` as owner.
-- `claimAllHookFees(...)` has no recipient overload; full claim always pays to current `owner()`.
+- Use `claimHookFees()` as owner to claim full accrued balance.
+- Payout always goes to current `owner()`; no recipient override.
 - Payout path is PoolManager accounting withdrawal: `unlock` -> `burn` -> `take`.
 - Oversized payouts are chunked automatically so each `burn` / `take` fits PoolManager `int128` accounting bounds.
-- `claimHookFees(...)` requires `to == owner()`.
 - If pool includes native currency, recipient must be compatible with native payout from PoolManager sender context in the claim path.
 - Sepolia preflight/ensure flow validates this compatibility before deploy/reuse success.
 - If ownership changes later in a native-asset pool, preserve this compatibility invariant.
@@ -97,10 +96,9 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 
 - `pause()`/`unpause()` are freeze/resume, not implicit floor reset.
 - Pause does not disable swaps and does not disable HookFee accrual.
-- Emergency resets are explicit and paused-only:
-  - `emergencyResetToFloor()`
-  - `emergencyResetToCash()`
-- `resetToCash` is default emergency path unless strict floor mode is required.
+- Emergency resets are explicit and paused-only: `emergencyReset(uint8 targetMode)`.
+  - `targetMode` must be `MODE_FLOOR` (0) or `MODE_CASH` (1).
+- Cash is the default emergency target unless strict floor lockdown is required.
 - If reset target tier already equals current tier, state still resets and emits reset event, but no `FeeUpdated`.
 - Monitoring should consume reset events, not only fee update events.
 - Paused maintenance updates:

@@ -340,6 +340,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     error InvalidHoldPeriods();
     error InvalidConfirmPeriods();
     error RequiresPaused();
+    error InvalidTargetMode(uint8 mode);
 
     error NotOwner();
     error InvalidOwner();
@@ -1322,30 +1323,18 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         emit Unpaused(_modeFee(feeIdx), feeIdx);
     }
 
-    /// @notice Emergency reset while paused to floor mode.
+    /// @notice Emergency reset while paused to floor or cash mode.
     /// @dev Clears EMA/counters (`emaVolumeScaled`, hold/streak counters) and restarts open period state.
     /// @dev If the target fee index already matches current index, fee state still resets but no `FeeUpdated` is emitted.
-    function emergencyResetToFloor() external onlyOwner whenPaused {
-        _emergencyReset(MODE_FLOOR, true);
-    }
-
-    /// @notice Emergency reset while paused to cash mode.
-    /// @dev Clears EMA/counters (`emaVolumeScaled`, hold/streak counters) and restarts open period state.
-    /// @dev If the target fee index already matches current index, fee state still resets but no `FeeUpdated` is emitted.
-    function emergencyResetToCash() external onlyOwner whenPaused {
-        _emergencyReset(MODE_CASH, false);
-    }
-
-    /// @notice Claims selected amounts of accrued HookFees.
-    /// @dev `to` must equal current `owner()`.
-    /// @dev Uses PoolManager accounting withdrawal flow (`unlock` -> `burn` -> `take`) to transfer funds to recipient.
-    function claimHookFees(address to, uint256 amount0, uint256 amount1) external onlyOwner {
-        _claimHookFeesInternal(to, amount0, amount1);
+    /// @param targetMode Must be `MODE_FLOOR` (0) or `MODE_CASH` (1).
+    function emergencyReset(uint8 targetMode) external onlyOwner whenPaused {
+        if (targetMode != MODE_FLOOR && targetMode != MODE_CASH) revert InvalidTargetMode(targetMode);
+        _emergencyReset(targetMode, targetMode == MODE_FLOOR);
     }
 
     /// @notice Claims all accrued HookFees to current `owner()`.
     /// @dev Uses PoolManager accounting withdrawal flow (`unlock` -> `burn` -> `take`) to transfer funds to recipient.
-    function claimAllHookFees() external onlyOwner {
+    function claimHookFees() external onlyOwner {
         _claimHookFeesInternal(_owner, _hookFees0, _hookFees1);
     }
 

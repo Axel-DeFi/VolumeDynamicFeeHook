@@ -94,19 +94,19 @@ contract MeasureGasLive is LiveOpsBase {
         if (operation == GasMeasurementLib.Operation.EmergencyResetToFloor) {
             _moveToCash();
             hook.pause();
-            hook.emergencyResetToFloor();
+            hook.emergencyReset(hook.MODE_FLOOR());
             return;
         }
         if (operation == GasMeasurementLib.Operation.EmergencyResetToCash) {
             _resetToFloorUnpaused();
             hook.pause();
-            hook.emergencyResetToCash();
+            hook.emergencyReset(hook.MODE_CASH());
             return;
         }
         if (operation == GasMeasurementLib.Operation.ClaimAllHookFees) {
             _resetToFloorUnpaused();
             _swapStableUsd6(_seedUsd6());
-            hook.claimAllHookFees();
+            hook.claimHookFees();
             return;
         }
         if (operation == GasMeasurementLib.Operation.NormalSwap) {
@@ -157,7 +157,7 @@ contract MeasureGasLive is LiveOpsBase {
         if (!hook.isPaused()) {
             hook.pause();
         }
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(hook.MODE_FLOOR());
         hook.unpause();
         _assertMode(hook.MODE_FLOOR());
     }

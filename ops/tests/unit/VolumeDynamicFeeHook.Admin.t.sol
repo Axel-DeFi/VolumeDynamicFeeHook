@@ -1120,16 +1120,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(hook.hookFeePercent(), 5);
     }
 
-    function test_claimHookFees_reverts_when_to_is_not_current_owner() public {
-        _swap(true, -1, -10_000_000, 9_000_000);
-        (, uint256 fees1) = hook.hookFeesAccrued();
-        assertGt(fees1, 0, "precondition: accrued fees must exist");
-
-        vm.expectRevert(VolumeDynamicFeeHook.InvalidRecipient.selector);
-        hook.claimHookFees(outsider, 0, fees1);
-    }
-
-    function test_claimAllHookFees_chunks_settlement_when_accrual_exceeds_poolManager_int128_limit() public {
+    function test_claimHookFees_chunks_settlement_when_accrual_exceeds_poolManager_int128_limit() public {
         uint24 nearMaxFloorFee = 999_998;
         VolumeDynamicFeeHookAdminHarness largeClaimHook =
             _deployHarness(nearMaxFloorFee, nearMaxFloorFee + 1, 1_000_000, owner, 10, 6);
@@ -1144,7 +1135,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         (, uint256 fees1) = largeClaimHook.hookFeesAccrued();
         assertGt(fees1, poolManagerLimit, "precondition: accrued HookFee must exceed single-settlement limit");
 
-        largeClaimHook.claimAllHookFees();
+        largeClaimHook.claimHookFees();
 
         (uint256 fees0After, uint256 fees1After) = largeClaimHook.hookFeesAccrued();
         assertEq(fees0After, 0);
@@ -1154,7 +1145,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(manager.takeCount(), 2, "oversized accrual must be taken in multiple chunks");
     }
 
-    function test_claimAllHookFees_after_owner_transfer_uses_new_owner_without_manual_sync() public {
+    function test_claimHookFees_after_owner_transfer_uses_new_owner_without_manual_sync() public {
         _swap(true, -1, -10_000_000, 9_000_000);
         (, uint256 feesBeforeTransfer) = hook.hookFeesAccrued();
         assertGt(feesBeforeTransfer, 0, "precondition: accrued fees must exist");
@@ -1164,11 +1155,11 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         hook.acceptOwner();
 
         vm.expectRevert(VolumeDynamicFeeHook.NotOwner.selector);
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         uint256 takeCountBefore = manager.takeCount();
         vm.prank(nextOwner);
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         (, uint256 feesAfterClaim) = hook.hookFeesAccrued();
         assertEq(feesAfterClaim, 0, "new owner must be able to claim pre-transfer accrual");
@@ -1861,11 +1852,21 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     }
 
     function test_emergency_resets_require_paused_and_apply_semantics() public {
+        uint8 modeFloor = hook.MODE_FLOOR();
+        uint8 modeCash = hook.MODE_CASH();
+        uint8 modeExtreme = hook.MODE_EXTREME();
+
         vm.expectRevert(VolumeDynamicFeeHook.RequiresPaused.selector);
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(modeFloor);
 
         hook.pause();
-        hook.emergencyResetToCash();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(VolumeDynamicFeeHook.InvalidTargetMode.selector, modeExtreme)
+        );
+        hook.emergencyReset(modeExtreme);
+
+        hook.emergencyReset(modeCash);
 
         (
             uint8 feeIdx,
@@ -1879,7 +1880,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             bool paused
         ) = hook.getStateDebug();
 
-        assertEq(feeIdx, hook.MODE_CASH());
+        assertEq(feeIdx, modeCash);
         assertEq(hold, 0);
         assertEq(up, 0);
         assertEq(down, 0);
@@ -1889,9 +1890,9 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertTrue(paused);
         assertEq(periodStart, uint64(block.timestamp));
 
-        hook.emergencyResetToFloor();
+        hook.emergencyReset(modeFloor);
         (feeIdx,,,,,, periodVol, ema, paused) = hook.getStateDebug();
-        assertEq(feeIdx, hook.MODE_FLOOR());
+        assertEq(feeIdx, modeFloor);
         assertEq(periodVol, 0);
         assertEq(ema, 0);
         assertTrue(paused);
@@ -2079,7 +2080,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         (uint256 b0, uint256 b1) = hook.hookFeesAccrued();
         assertEq(b0 + b1 > 0, true);
 
-        hook.claimAllHookFees();
+        hook.claimHookFees();
         assertEq(manager.unlockCount(), 1, "claim must go through poolManager.unlock");
         assertEq(manager.burnCount() > 0, true, "claim must burn poolManager claim balances");
         assertEq(manager.takeCount() > 0, true, "claim must take from poolManager accounting");

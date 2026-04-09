@@ -131,7 +131,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
 
         uint256 ownerBefore = _balanceOf(key.currency1, address(this));
 
-        hook.claimHookFees(address(this), 0, fees1);
+        hook.claimHookFees();
 
         uint256 ownerAfter = _balanceOf(key.currency1, address(this));
         assertEq(ownerAfter - ownerBefore, fees1);
@@ -152,7 +152,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
 
         uint256 ownerBefore = _balanceOf(key.currency0, address(this));
 
-        hook.claimHookFees(address(this), fees0, 0);
+        hook.claimHookFees();
 
         uint256 ownerAfter = _balanceOf(key.currency0, address(this));
         assertEq(ownerAfter - ownerBefore, fees0);
@@ -163,7 +163,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
         assertEq(manager.balanceOf(address(hook), key.currency0.toId()), 0);
     }
 
-    function test_claimAllHookFees_transfers_both_tokens_to_owner() public {
+    function test_claimHookFees_transfers_both_tokens_to_owner() public {
         _swapExactInput(true, 9_000_000);
         _swapExactInput(false, 9_000_000);
 
@@ -174,7 +174,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
         uint256 owner0Before = _balanceOf(key.currency0, address(this));
         uint256 owner1Before = _balanceOf(key.currency1, address(this));
 
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         uint256 owner0After = _balanceOf(key.currency0, address(this));
         uint256 owner1After = _balanceOf(key.currency1, address(this));
@@ -227,10 +227,10 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
         hook.acceptOwner();
 
         vm.expectRevert(VolumeDynamicFeeHook.NotOwner.selector);
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         vm.prank(newOwner);
-        hook.claimAllHookFees();
+        hook.claimHookFees();
 
         uint256 newOwner0After = _balanceOf(key.currency0, newOwner);
         uint256 newOwner1After = _balanceOf(key.currency1, newOwner);

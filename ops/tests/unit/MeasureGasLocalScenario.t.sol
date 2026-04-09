@@ -60,7 +60,7 @@ contract MeasureGasLocalScenarioTest is Test, GasMeasurementLocalBase {
         _assertMode(hook.MODE_FLOOR());
     }
 
-    function test_claimAllHookFees_measurement_path_clears_accrued_balances() public {
+    function test_claimHookFees_measurement_path_clears_accrued_balances() public {
         vm.startPrank(vm.addr(1));
         _runOperation(GasMeasurementLib.Operation.ClaimAllHookFees);
         vm.stopPrank();
