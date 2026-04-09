@@ -1,6 +1,0 @@
-{
-  "compile_force_framework": "foundry",
-  "exclude_dependencies": true,
-  "detectors_to_exclude": "incorrect-equality,timestamp,reentrancy-events,shadowing-local,cyclomatic-complexity",
-  "filter_paths": "(^|/)(lib|ops|out|cache|broadcast)/"
-}
