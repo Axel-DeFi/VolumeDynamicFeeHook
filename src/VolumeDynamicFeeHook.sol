@@ -135,7 +135,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     struct ControllerSettings {
         /// @dev minimum period volume required to consider entering cash mode
         uint64 enterCashMinVolume;
-        /// @dev minimum current-period-to-EMA ratio, in percent, required to enter cash mode
+        /// @dev minimum period-volume / EMA ratio, in percent, required to enter cash mode
         uint16 enterCashEmaRatioPct;
         // Configured hold length N; hold only blocks the ordinary cash->floor path, while the emergency path keeps
         // accumulating. Effective fully protected periods are N - 1, so the earliest ordinary cash->floor close under
@@ -144,7 +144,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 holdCashPeriods;
         /// @dev minimum period volume required to consider entering extreme mode
         uint64 enterExtremeMinVolume;
-        /// @dev minimum current-period-to-EMA ratio, in percent, required to enter extreme mode
+        /// @dev minimum period-volume / EMA ratio, in percent, required to enter extreme mode
         uint16 enterExtremeEmaRatioPct;
         /// @dev number of strong periods required to confirm entry into extreme mode
         uint8 enterExtremeConfirmPeriods;
@@ -153,11 +153,11 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         // `holdExtremePeriods + exitExtremeConfirmPeriods - 1`.
         /// @dev number of periods to hold extreme mode after entry
         uint8 holdExtremePeriods;
-        /// @dev maximum current-period-to-EMA ratio, in percent, below which extreme mode may exit
+        /// @dev maximum period-volume / EMA ratio, in percent, below which extreme mode may exit
         uint16 exitExtremeEmaRatioPct;
         /// @dev number of weak periods required to confirm exit from extreme mode
         uint8 exitExtremeConfirmPeriods;
-        /// @dev maximum current-period-to-EMA ratio, in percent, below which cash mode may exit
+        /// @dev maximum period-volume / EMA ratio, in percent, below which cash mode may exit
         uint16 exitCashEmaRatioPct;
         /// @dev number of weak periods required to confirm exit from cash mode
         uint8 exitCashConfirmPeriods;
@@ -428,19 +428,19 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @param ownerAddr Initial owner address.
     /// @param hookFeePercent_ Initial hook fee percent used by the hook settlement formula.
     /// @param _enterCashMinVolume Minimum close volume for floor->cash transition.
-    /// @param _enterCashEmaRatioPct Close-volume trigger for floor->cash transition, as `closeVol / EMA` in percent.
+    /// @param _enterCashEmaRatioPct Minimum period-volume / EMA ratio, in percent, required to enter cash mode.
     /// @param _holdCashPeriods Configured cash hold length `N`. Hold blocks only the ordinary cash->floor path, emergency
     /// still counts, effective fully protected periods are `N - 1`, and the earliest ordinary cash->floor close under
     /// uninterrupted weakness is `holdCashPeriods + exitCashConfirmPeriods - 1`.
     /// @param _enterExtremeMinVolume Minimum close volume for cash->extreme transition.
-    /// @param _enterExtremeEmaRatioPct Close-volume trigger for cash->extreme transition, as `closeVol / EMA` in percent.
+    /// @param _enterExtremeEmaRatioPct Minimum period-volume / EMA ratio, in percent, required to enter extreme mode.
     /// @param _enterExtremeConfirmPeriods Confirmation periods for cash->extreme transition.
     /// @param _holdExtremePeriods Hold periods after entering extreme. Hold blocks only the ordinary extreme->cash path,
     /// emergency still counts, and the earliest ordinary extreme->cash close under uninterrupted weakness is
     /// `holdExtremePeriods + exitExtremeConfirmPeriods - 1`.
-    /// @param _exitExtremeEmaRatioPct Close-volume trigger ceiling for extreme->cash transition, as `closeVol / EMA` in percent.
+    /// @param _exitExtremeEmaRatioPct Maximum period-volume / EMA ratio, in percent, below which extreme mode may exit.
     /// @param _exitExtremeConfirmPeriods Confirmation periods for extreme->cash transition.
-    /// @param _exitCashEmaRatioPct Close-volume trigger ceiling for cash->floor transition, as `closeVol / EMA` in percent.
+    /// @param _exitCashEmaRatioPct Maximum period-volume / EMA ratio, in percent, below which cash mode may exit.
     /// @param _exitCashConfirmPeriods Confirmation periods for cash->floor transition.
     /// @param _lowVolumeReset Emergency floor trigger threshold (`> 0` and strictly below `_enterCashMinVolume`).
     /// @param _lowVolumeResetPeriods Consecutive confirmations for emergency floor trigger. The earliest
@@ -868,7 +868,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return _config.enterCashMinVolume;
     }
 
-    /// @notice Returns minimum current-period-to-EMA ratio, in percent, required to enter cash mode.
+    /// @notice Returns minimum period-volume / EMA ratio, in percent, required to enter cash mode.
     function enterCashEmaRatioPct() public view returns (uint16) {
         return _config.enterCashEmaRatioPct;
     }
@@ -884,7 +884,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return _config.enterExtremeMinVolume;
     }
 
-    /// @notice Returns minimum current-period-to-EMA ratio, in percent, required to enter extreme mode.
+    /// @notice Returns minimum period-volume / EMA ratio, in percent, required to enter extreme mode.
     function enterExtremeEmaRatioPct() public view returns (uint16) {
         return _config.enterExtremeEmaRatioPct;
     }
@@ -899,7 +899,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return _config.holdExtremePeriods;
     }
 
-    /// @notice Returns maximum current-period-to-EMA ratio, in percent, below which extreme mode may exit.
+    /// @notice Returns maximum period-volume / EMA ratio, in percent, below which extreme mode may exit.
     function exitExtremeEmaRatioPct() public view returns (uint16) {
         return _config.exitExtremeEmaRatioPct;
     }
@@ -909,7 +909,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return _config.exitExtremeConfirmPeriods;
     }
 
-    /// @notice Returns maximum current-period-to-EMA ratio, in percent, below which cash mode may exit.
+    /// @notice Returns maximum period-volume / EMA ratio, in percent, below which cash mode may exit.
     function exitCashEmaRatioPct() public view returns (uint16) {
         return _config.exitCashEmaRatioPct;
     }
