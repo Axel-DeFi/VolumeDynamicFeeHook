@@ -190,7 +190,7 @@ abstract contract GasMeasurementLocalBase is CommonBase {
             return;
         }
 
-        _measureClaimAllHookFees();
+        _measureClaimHookFees();
     }
 
     function _measureNormalSwap() internal {
@@ -234,7 +234,7 @@ abstract contract GasMeasurementLocalBase is CommonBase {
         _assertMode(hook.MODE_FLOOR());
     }
 
-    function _measureClaimAllHookFees() internal {
+    function _measureClaimHookFees() internal {
         _swapStable(_seedStableRaw());
         hook.claimHookFees();
     }

@@ -59,27 +59,27 @@ Stable-token decimals resolution:
 ## Timing / controller
 
 Human-readable units for controller keys:
-- `*_FLOW_EMA_X` keys use the close-volume trigger as a multiple of EMA. Example: `1.25` means `1.25x EMA`.
+- `*_EMA_RATIO_PERCENT` keys use integer percent values for the period-volume / EMA ratio. Example: `125` means `125%` of EMA.
 - all `*VOLUME` keys use dollars in the internal six-decimal scale. Example: `1000000000` means `$1,000`.
 - the six-decimal dollar unit is documented here and does not appear in key names.
 
 - `PERIOD_SECONDS` — close period length in seconds. Example: `60`.
 - `EMA_PERIODS` — EMA denominator in periods. Example: `12`.
-- `LULL_RESET_SECONDS` — inactivity timeout that forces a fresh open period. Example: `600`.
+- `IDLE_RESET_SECONDS` — inactivity timeout that forces a fresh open period. Example: `600`.
 - `HOOK_FEE_PERCENT` — additional trader fee as a percent of the active LP fee. Example: `10`.
-- `FLOOR_TO_CASH_MIN_CLOSE_VOLUME` — minimum close volume required before `FLOOR -> CASH` is allowed. Example: `1000000000`.
-- `FLOOR_TO_CASH_MIN_FLOW_EMA_X` — `closeVol / EMA` trigger for `FLOOR -> CASH`. Example: `1.90`.
-- `CASH_HOLD_PERIODS` — configured cash hold length `N` (`N - 1` fully protected periods). Example: `4`.
-- `CASH_TO_EXTREME_MIN_CLOSE_VOLUME` — minimum close volume required before `CASH -> EXTREME` is allowed. Example: `4000000000`.
-- `CASH_TO_EXTREME_MIN_FLOW_EMA_X` — `closeVol / EMA` trigger for `CASH -> EXTREME`. Example: `4.10`.
-- `CASH_TO_EXTREME_CONFIRM_PERIODS` — consecutive qualifying closes required before entering `EXTREME`. Example: `2`.
-- `EXTREME_HOLD_PERIODS` — configured hold length after entering `EXTREME`. Example: `4`.
-- `EXTREME_TO_CASH_MAX_FLOW_EMA_X` — `closeVol / EMA` trigger for `EXTREME -> CASH`. Example: `1.20`.
-- `EXTREME_TO_CASH_CONFIRM_PERIODS` — consecutive qualifying closes required before leaving `EXTREME`. Example: `2`.
-- `CASH_TO_FLOOR_MAX_FLOW_EMA_X` — `closeVol / EMA` trigger for `CASH -> FLOOR`. Example: `1.20`.
-- `CASH_TO_FLOOR_CONFIRM_PERIODS` — consecutive qualifying closes required before leaving `CASH`. Example: `3`.
-- `EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME` — emergency floor threshold checked against close volume. Example: `600000000`.
-- `EMERGENCY_TO_FLOOR_CONFIRM_PERIODS` — consecutive closes below `EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME` required for emergency reset. Example: `3`.
+- `ENTER_CASH_MIN_VOLUME` — minimum period volume required before `FLOOR -> CASH` is allowed. Example: `1000000000`.
+- `ENTER_CASH_EMA_RATIO_PERCENT` — minimum period-volume / EMA ratio for `FLOOR -> CASH`, in percent. Example: `190`.
+- `HOLD_CASH_PERIODS` — configured cash hold length `N` (`N - 1` fully protected periods). Example: `4`.
+- `ENTER_EXTREME_MIN_VOLUME` — minimum period volume required before `CASH -> EXTREME` is allowed. Example: `4000000000`.
+- `ENTER_EXTREME_EMA_RATIO_PERCENT` — minimum period-volume / EMA ratio for `CASH -> EXTREME`, in percent. Example: `410`.
+- `ENTER_EXTREME_CONFIRM_PERIODS` — consecutive qualifying closes required before entering `EXTREME`. Example: `2`.
+- `HOLD_EXTREME_PERIODS` — configured hold length after entering `EXTREME`. Example: `4`.
+- `EXIT_EXTREME_EMA_RATIO_PERCENT` — maximum period-volume / EMA ratio for `EXTREME -> CASH`, in percent. Example: `120`.
+- `EXIT_EXTREME_CONFIRM_PERIODS` — consecutive qualifying closes required before leaving `EXTREME`. Example: `2`.
+- `EXIT_CASH_EMA_RATIO_PERCENT` — maximum period-volume / EMA ratio for `CASH -> FLOOR`, in percent. Example: `120`.
+- `EXIT_CASH_CONFIRM_PERIODS` — consecutive qualifying closes required before leaving `CASH`. Example: `3`.
+- `LOW_VOLUME_RESET` — emergency floor threshold checked against period volume. Example: `600000000`.
+- `LOW_VOLUME_RESET_PERIODS` — consecutive closes below `LOW_VOLUME_RESET` required for emergency reset. Example: `3`.
 
 ## Frozen deployment snapshot
 
@@ -99,21 +99,21 @@ the snapshot cannot drift with outer environment changes.
 - `DEPLOY_EXTREME_FEE_PERCENT` — same meaning as `EXTREME_FEE_PERCENT`. Example: `0.9`.
 - `DEPLOY_PERIOD_SECONDS`
 - `DEPLOY_EMA_PERIODS`
-- `DEPLOY_LULL_RESET_SECONDS`
+- `DEPLOY_IDLE_RESET_SECONDS`
 - `DEPLOY_HOOK_FEE_PERCENT`
-- `DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME` — same meaning as `FLOOR_TO_CASH_MIN_CLOSE_VOLUME`. Example: `1000000000`.
-- `DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X` — same meaning as `FLOOR_TO_CASH_MIN_FLOW_EMA_X`. Example: `1.90`.
-- `DEPLOY_CASH_HOLD_PERIODS`
-- `DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME` — same meaning as `CASH_TO_EXTREME_MIN_CLOSE_VOLUME`. Example: `4000000000`.
-- `DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X` — same meaning as `CASH_TO_EXTREME_MIN_FLOW_EMA_X`. Example: `4.10`.
-- `DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS` — same meaning as `CASH_TO_EXTREME_CONFIRM_PERIODS`. Example: `2`.
-- `DEPLOY_EXTREME_HOLD_PERIODS`
-- `DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X` — same meaning as `EXTREME_TO_CASH_MAX_FLOW_EMA_X`. Example: `1.20`.
-- `DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS` — same meaning as `EXTREME_TO_CASH_CONFIRM_PERIODS`. Example: `2`.
-- `DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X` — same meaning as `CASH_TO_FLOOR_MAX_FLOW_EMA_X`. Example: `1.20`.
-- `DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS` — same meaning as `CASH_TO_FLOOR_CONFIRM_PERIODS`. Example: `3`.
-- `DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME` — same meaning as `EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME`. Example: `600000000`.
-- `DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS`
+- `DEPLOY_ENTER_CASH_MIN_VOLUME` — same meaning as `ENTER_CASH_MIN_VOLUME`. Example: `1000000000`.
+- `DEPLOY_ENTER_CASH_EMA_RATIO_PERCENT` — same meaning as `ENTER_CASH_EMA_RATIO_PERCENT`. Example: `190`.
+- `DEPLOY_HOLD_CASH_PERIODS`
+- `DEPLOY_ENTER_EXTREME_MIN_VOLUME` — same meaning as `ENTER_EXTREME_MIN_VOLUME`. Example: `4000000000`.
+- `DEPLOY_ENTER_EXTREME_EMA_RATIO_PERCENT` — same meaning as `ENTER_EXTREME_EMA_RATIO_PERCENT`. Example: `410`.
+- `DEPLOY_ENTER_EXTREME_CONFIRM_PERIODS` — same meaning as `ENTER_EXTREME_CONFIRM_PERIODS`. Example: `2`.
+- `DEPLOY_HOLD_EXTREME_PERIODS`
+- `DEPLOY_EXIT_EXTREME_EMA_RATIO_PERCENT` — same meaning as `EXIT_EXTREME_EMA_RATIO_PERCENT`. Example: `120`.
+- `DEPLOY_EXIT_EXTREME_CONFIRM_PERIODS` — same meaning as `EXIT_EXTREME_CONFIRM_PERIODS`. Example: `2`.
+- `DEPLOY_EXIT_CASH_EMA_RATIO_PERCENT` — same meaning as `EXIT_CASH_EMA_RATIO_PERCENT`. Example: `120`.
+- `DEPLOY_EXIT_CASH_CONFIRM_PERIODS` — same meaning as `EXIT_CASH_CONFIRM_PERIODS`. Example: `3`.
+- `DEPLOY_LOW_VOLUME_RESET` — same meaning as `LOW_VOLUME_RESET`. Example: `600000000`.
+- `DEPLOY_LOW_VOLUME_RESET_PERIODS`
 - `INIT_PRICE_USD` — pool bootstrap price consumed by `ensure-pool`. Example: `2500`.
 
 For all profiles, constructor-aligned runtime keys are optional and fall back to the corresponding `DEPLOY_*` values.
@@ -121,21 +121,21 @@ Use the runtime key only when validation should expect post-deploy drift from th
 
 ## Optional runtime overrides
 
-- `MIN_COUNTED_SWAP_VOLUME` — telemetry dust filter in the internal six-decimal dollar scale when a non-default runtime threshold is required.
+- `DUST_SWAP_THRESHOLD` — telemetry dust filter in the internal six-decimal dollar scale when a non-default runtime threshold is required.
   When omitted, the loader uses `4_000_000`. Example: `4000000` for `$4`.
 
 Controller constraint notes:
-- `EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME` must be strictly greater than zero.
-- `EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME` must be strictly lower than `FLOOR_TO_CASH_MIN_CLOSE_VOLUME`.
-- `FLOOR_TO_CASH_MIN_FLOW_EMA_X` must be less than or equal to `CASH_TO_EXTREME_MIN_FLOW_EMA_X`.
-- `EXTREME_TO_CASH_MAX_FLOW_EMA_X` must be less than or equal to `CASH_TO_FLOOR_MAX_FLOW_EMA_X`.
-- `CASH_HOLD_PERIODS` and `EXTREME_HOLD_PERIODS` block only the ordinary down path.
+- `LOW_VOLUME_RESET` must be strictly greater than zero.
+- `LOW_VOLUME_RESET` must be strictly lower than `ENTER_CASH_MIN_VOLUME`.
+- `ENTER_CASH_EMA_RATIO_PERCENT` must be less than or equal to `ENTER_EXTREME_EMA_RATIO_PERCENT`.
+- `EXIT_EXTREME_EMA_RATIO_PERCENT` must be less than or equal to `EXIT_CASH_EMA_RATIO_PERCENT`.
+- `HOLD_CASH_PERIODS` and `HOLD_EXTREME_PERIODS` block only the ordinary down path.
 - The emergency path continues counting during hold.
-- The earliest ordinary `cash -> floor` descent is `cashHoldPeriods + cashToFloorConfirmPeriods - 1`.
-- The earliest ordinary `extreme -> cash` descent is `extremeHoldPeriods + extremeToCashConfirmPeriods - 1`.
-- The earliest emergency descent is `emergencyToFloorConfirmPeriods`.
+- The earliest ordinary `cash -> floor` descent is `holdCashPeriods + exitCashConfirmPeriods - 1`.
+- The earliest ordinary `extreme -> cash` descent is `holdExtremePeriods + exitExtremeConfirmPeriods - 1`.
+- The earliest emergency descent is `lowVolumeResetPeriods`.
 - Hold semantics are `N -> N - 1` fully protected periods; production guidance is
-  `CASH_HOLD_PERIODS >= 2` and `EXTREME_HOLD_PERIODS >= 2` (recommended `3..4`).
+  `HOLD_CASH_PERIODS >= 2` and `HOLD_EXTREME_PERIODS >= 2` (recommended `3..4`).
 
 ## Budget safety keys
 

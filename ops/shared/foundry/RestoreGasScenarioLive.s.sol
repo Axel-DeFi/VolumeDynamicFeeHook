@@ -40,7 +40,8 @@ contract RestoreGasScenarioLive is LiveOpsBase {
         if (!hook.isPaused()) {
             hook.pause();
         }
-        hook.setTimingSettings(originalPeriodSeconds, originalEmaPeriods, originalIdleResetSeconds);
+        hook.setModel(originalPeriodSeconds, originalEmaPeriods);
+        hook.setResetSettings(originalIdleResetSeconds, hook.lowVolumeReset(), hook.lowVolumeResetPeriods());
         if (!wasPaused) {
             hook.unpause();
         }

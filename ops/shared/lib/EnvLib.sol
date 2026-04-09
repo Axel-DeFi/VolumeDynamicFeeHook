@@ -188,18 +188,14 @@ library EnvLib {
         value = toUint24Checked(parseDecimalToScale(vm.envString(key), key, 4), key);
     }
 
-    function envOrPctFromMultiplierX(string memory key, uint16 fallbackValue)
-        internal
-        view
-        returns (uint16 value)
-    {
+    function envOrPercent(string memory key, uint16 fallbackValue) internal view returns (uint16 value) {
         if (!hasKey(key)) return fallbackValue;
-        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 2), key);
+        value = toUint16Checked(vm.envUint(key), key);
     }
 
-    function requirePctFromMultiplierX(string memory key) internal view returns (uint16 value) {
+    function requirePercent(string memory key) internal view returns (uint16 value) {
         if (!hasKey(key)) revert ErrorLib.MissingEnv(key);
-        value = toUint16Checked(parseDecimalToScale(vm.envString(key), key, 2), key);
+        value = toUint16Checked(vm.envUint(key), key);
     }
 
     function envOrUsd6FromUsd(string memory key, uint64 fallbackValue) internal view returns (uint64 value) {

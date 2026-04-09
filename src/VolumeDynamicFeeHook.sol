@@ -47,7 +47,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Maximum allowed dust-swap threshold in the internal 6-decimal USD scale.
     uint64 public constant MAX_DUST_SWAP_THRESHOLD = 10_000_000;
 
-    uint16 private constant MAX_LULL_PERIODS = 24;
+    uint16 private constant MAX_IDLE_PERIODS = 24;
     uint8 private constant MAX_EMA_PERIODS = 128;
     uint8 private constant MAX_HOLD_PERIODS = 15;
     uint8 private constant MAX_UP_EXTREME_STREAK = 7;
@@ -1057,6 +1057,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Accepts owner role by pending owner.
+    /// @dev Clears any pending HookFee change so the new owner does not inherit a scheduled update.
     function acceptOwner() external {
         address pending = _pendingOwner;
         if (msg.sender != pending) revert NotPendingOwner();
@@ -1077,16 +1078,16 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Schedules HookFee percent change through 48h timelock.
-    function scheduleHookFeeChange(uint16 hookFeePercent) external onlyOwner {
+    function scheduleHookFeeChange(uint16 newHookFeePercent) external onlyOwner {
         if (_hasPendingHookFeeChange) revert PendingHookFeeChangeExists();
-        _validateHookFeePercent(hookFeePercent);
+        _validateHookFeePercent(newHookFeePercent);
 
         uint64 executeAfter = _now64() + HOOK_FEE_PERCENT_CHANGE_DELAY;
         _hasPendingHookFeeChange = true;
-        _pendingHookFeePercent = hookFeePercent;
+        _pendingHookFeePercent = newHookFeePercent;
         _pendingHookFeeExecuteAfter = executeAfter;
 
-        emit HookFeeChangeScheduled(hookFeePercent, executeAfter);
+        emit HookFeeChangeScheduled(newHookFeePercent, executeAfter);
     }
 
     /// @notice Cancels scheduled HookFee percent change.
@@ -1388,7 +1389,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 lowVolumeResetPeriods_
     ) internal {
         if (idleResetSeconds_ <= _config.periodSeconds) revert InvalidConfig();
-        if (uint256(idleResetSeconds_) > uint256(_config.periodSeconds) * MAX_LULL_PERIODS) revert InvalidConfig();
+        if (uint256(idleResetSeconds_) > uint256(_config.periodSeconds) * MAX_IDLE_PERIODS) revert InvalidConfig();
         // lowVolumeReset_ at zero would force permanent trigger semantics.
         if (lowVolumeReset_ == 0) revert InvalidConfig();
         if (lowVolumeReset_ >= _config.enterCashMinVolume) revert InvalidConfig();

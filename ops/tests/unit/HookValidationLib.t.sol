@@ -217,7 +217,7 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
     address internal constant TOKEN1 = address(0x0000000000000000000000000000000000002222);
     int24 internal constant TICK_SPACING = 10;
     uint32 internal constant PERIOD_SECONDS = 300;
-    uint32 internal constant LULL_RESET_SECONDS = 3600;
+    uint32 internal constant IDLE_RESET_SECONDS = 3600;
     uint8 internal constant EMA_PERIODS = 8;
 
     function setUp() public {
@@ -266,7 +266,7 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
         assertEq(validation.reason, "hook pending owner exists");
     }
 
-    function test_validateHook_rejects_timing_config_mismatch() public {
+    function test_validateHook_rejects_model_config_mismatch() public {
         HookValidationHarness hook = _deploy(address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
         OpsTypes.CoreConfig memory cfg =
             _matchingCfg(address(hook), address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
@@ -274,7 +274,18 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
 
         OpsTypes.HookValidation memory validation = HookValidationLib.validateHook(cfg);
         assertFalse(validation.ok);
-        assertEq(validation.reason, "hook timing config mismatch");
+        assertEq(validation.reason, "hook model config mismatch");
+    }
+
+    function test_validateHook_rejects_reset_config_mismatch() public {
+        HookValidationHarness hook = _deploy(address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
+        OpsTypes.CoreConfig memory cfg =
+            _matchingCfg(address(hook), address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
+        cfg.idleResetSeconds = IDLE_RESET_SECONDS + 1;
+
+        OpsTypes.HookValidation memory validation = HookValidationLib.validateHook(cfg);
+        assertFalse(validation.ok);
+        assertEq(validation.reason, "hook reset config mismatch");
     }
 
     function test_validateHook_rejects_stable_decimals_mode_mismatch() public {
@@ -287,7 +298,7 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
         assertEq(validation.reason, "hook stable decimals mismatch");
     }
 
-    function test_validateHook_rejects_minCountedSwap_mismatch() public {
+    function test_validateHook_rejects_dustSwapThreshold_mismatch() public {
         HookValidationHarness hook = _deploy(address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
         OpsTypes.CoreConfig memory cfg =
             _matchingCfg(address(hook), address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
@@ -295,7 +306,7 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
 
         OpsTypes.HookValidation memory validation = HookValidationLib.validateHook(cfg);
         assertFalse(validation.ok);
-        assertEq(validation.reason, "hook min counted swap mismatch");
+        assertEq(validation.reason, "hook dust swap threshold mismatch");
     }
 
     function test_validateHook_rejects_pending_hookFee_percent_change() public {
@@ -368,7 +379,7 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
             V2_DEFAULT_EXTREME_FEE,
             PERIOD_SECONDS,
             EMA_PERIODS,
-            LULL_RESET_SECONDS,
+            IDLE_RESET_SECONDS,
             owner_,
             hookFeePercent_
         );
@@ -392,22 +403,22 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
             V2_DEFAULT_EXTREME_FEE,
             PERIOD_SECONDS,
             EMA_PERIODS,
-            LULL_RESET_SECONDS,
+            IDLE_RESET_SECONDS,
             owner_,
             hookFeePercent_,
-            V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
-            V2_CASH_HOLD_PERIODS,
-            V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
-            V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
-            V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
-            V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
-            V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
-            V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            V2_ENTER_CASH_MIN_VOLUME,
+            V2_ENTER_CASH_EMA_RATIO_PCT,
+            V2_HOLD_CASH_PERIODS,
+            V2_ENTER_EXTREME_MIN_VOLUME,
+            V2_ENTER_EXTREME_EMA_RATIO_PCT,
+            V2_ENTER_EXTREME_CONFIRM_PERIODS,
+            V2_HOLD_EXTREME_PERIODS,
+            V2_EXIT_EXTREME_EMA_RATIO_PCT,
+            V2_EXIT_EXTREME_CONFIRM_PERIODS,
+            V2_EXIT_CASH_EMA_RATIO_PCT,
+            V2_EXIT_CASH_CONFIRM_PERIODS,
+            V2_LOW_VOLUME_RESET,
+            V2_LOW_VOLUME_RESET_PERIODS
         );
     }
 
@@ -437,21 +448,21 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
         cfg.extremeFeePips = V2_DEFAULT_EXTREME_FEE;
         cfg.periodSeconds = PERIOD_SECONDS;
         cfg.emaPeriods = EMA_PERIODS;
-        cfg.idleResetSeconds = LULL_RESET_SECONDS;
+        cfg.idleResetSeconds = IDLE_RESET_SECONDS;
         cfg.hookFeePercent = hookFeePercent_;
         cfg.dustSwapThreshold = 4_000_000;
-        cfg.enterCashMinVolume = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
-        cfg.enterCashEmaRatioPct = V2_FLOOR_TO_CASH_MIN_FLOW_PCT;
-        cfg.holdCashPeriods = V2_CASH_HOLD_PERIODS;
-        cfg.enterExtremeMinVolume = V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME;
-        cfg.enterExtremeEmaRatioPct = V2_CASH_TO_EXTREME_MIN_FLOW_PCT;
-        cfg.enterExtremeConfirmPeriods = V2_CASH_TO_EXTREME_CONFIRM_PERIODS;
-        cfg.holdExtremePeriods = V2_EXTREME_HOLD_PERIODS;
-        cfg.exitExtremeEmaRatioPct = V2_EXTREME_TO_CASH_MAX_FLOW_PCT;
-        cfg.exitExtremeConfirmPeriods = V2_EXTREME_TO_CASH_CONFIRM_PERIODS;
-        cfg.exitCashEmaRatioPct = V2_CASH_TO_FLOOR_MAX_FLOW_PCT;
-        cfg.exitCashConfirmPeriods = V2_CASH_TO_FLOOR_CONFIRM_PERIODS;
-        cfg.lowVolumeReset = V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME;
-        cfg.lowVolumeResetPeriods = V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS;
+        cfg.enterCashMinVolume = V2_ENTER_CASH_MIN_VOLUME;
+        cfg.enterCashEmaRatioPct = V2_ENTER_CASH_EMA_RATIO_PCT;
+        cfg.holdCashPeriods = V2_HOLD_CASH_PERIODS;
+        cfg.enterExtremeMinVolume = V2_ENTER_EXTREME_MIN_VOLUME;
+        cfg.enterExtremeEmaRatioPct = V2_ENTER_EXTREME_EMA_RATIO_PCT;
+        cfg.enterExtremeConfirmPeriods = V2_ENTER_EXTREME_CONFIRM_PERIODS;
+        cfg.holdExtremePeriods = V2_HOLD_EXTREME_PERIODS;
+        cfg.exitExtremeEmaRatioPct = V2_EXIT_EXTREME_EMA_RATIO_PCT;
+        cfg.exitExtremeConfirmPeriods = V2_EXIT_EXTREME_CONFIRM_PERIODS;
+        cfg.exitCashEmaRatioPct = V2_EXIT_CASH_EMA_RATIO_PCT;
+        cfg.exitCashConfirmPeriods = V2_EXIT_CASH_CONFIRM_PERIODS;
+        cfg.lowVolumeReset = V2_LOW_VOLUME_RESET;
+        cfg.lowVolumeResetPeriods = V2_LOW_VOLUME_RESET_PERIODS;
     }
 }

@@ -35,7 +35,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
 
     uint32 internal constant PERIOD_SECONDS = 300;
     uint8 internal constant EMA_PERIODS = 8;
-    uint32 internal constant LULL_RESET_SECONDS = 3600;
+    uint32 internal constant IDLE_RESET_SECONDS = 3600;
 
     int24 internal constant TICK_SPACING = 60;
 
@@ -74,7 +74,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
             V2_DEFAULT_EXTREME_FEE,
             PERIOD_SECONDS,
             EMA_PERIODS,
-            LULL_RESET_SECONDS,
+            IDLE_RESET_SECONDS,
             address(this),
             V2_INITIAL_HOOK_FEE_PERCENT
         );
@@ -99,7 +99,7 @@ contract VolumeDynamicFeeHookClaimAccountingIntegrationTest is Test, VolumeDynam
             V2_DEFAULT_EXTREME_FEE,
             PERIOD_SECONDS,
             EMA_PERIODS,
-            LULL_RESET_SECONDS,
+            IDLE_RESET_SECONDS,
             address(this),
             V2_INITIAL_HOOK_FEE_PERCENT
         );

@@ -90,7 +90,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
     address internal constant TOKEN1 = address(0x0000000000000000000000000000000000002222);
 
     uint32 internal constant PERIOD_SECONDS = 300;
-    uint32 internal constant LULL_RESET_SECONDS = 3600;
+    uint32 internal constant IDLE_RESET_SECONDS = 3600;
     address internal constant OUTSIDER = address(0xCAFE);
 
     struct DeployCfg {
@@ -132,11 +132,11 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             extremeFee: V2_DEFAULT_EXTREME_FEE,
             periodSeconds: PERIOD_SECONDS,
             emaPeriods: 8,
-            idleResetSeconds: LULL_RESET_SECONDS,
+            idleResetSeconds: IDLE_RESET_SECONDS,
             owner: address(this),
             hookFeePercent: V2_INITIAL_HOOK_FEE_PERCENT,
-            lowVolumeReset: V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            lowVolumeResetPeriods: V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            lowVolumeReset: V2_LOW_VOLUME_RESET,
+            lowVolumeResetPeriods: V2_LOW_VOLUME_RESET_PERIODS
         });
     }
 
@@ -156,17 +156,17 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             cfg.idleResetSeconds,
             cfg.owner,
             cfg.hookFeePercent,
-            V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
-            V2_CASH_HOLD_PERIODS,
-            V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
-            V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
-            V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
-            V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
-            V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
+            V2_ENTER_CASH_MIN_VOLUME,
+            V2_ENTER_CASH_EMA_RATIO_PCT,
+            V2_HOLD_CASH_PERIODS,
+            V2_ENTER_EXTREME_MIN_VOLUME,
+            V2_ENTER_EXTREME_EMA_RATIO_PCT,
+            V2_ENTER_EXTREME_CONFIRM_PERIODS,
+            V2_HOLD_EXTREME_PERIODS,
+            V2_EXIT_EXTREME_EMA_RATIO_PCT,
+            V2_EXIT_EXTREME_CONFIRM_PERIODS,
+            V2_EXIT_CASH_EMA_RATIO_PCT,
+            V2_EXIT_CASH_CONFIRM_PERIODS,
             cfg.lowVolumeReset,
             cfg.lowVolumeResetPeriods
         );
@@ -211,23 +211,23 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             cfg.idleResetSeconds,
             cfg.owner,
             cfg.hookFeePercent,
-            V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
-            V2_CASH_HOLD_PERIODS,
-            V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
-            V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
-            V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
-            V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
-            V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
-            V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
-            V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
+            V2_ENTER_CASH_MIN_VOLUME,
+            V2_ENTER_CASH_EMA_RATIO_PCT,
+            V2_HOLD_CASH_PERIODS,
+            V2_ENTER_EXTREME_MIN_VOLUME,
+            V2_ENTER_EXTREME_EMA_RATIO_PCT,
+            V2_ENTER_EXTREME_CONFIRM_PERIODS,
+            V2_HOLD_EXTREME_PERIODS,
+            V2_EXIT_EXTREME_EMA_RATIO_PCT,
+            V2_EXIT_EXTREME_CONFIRM_PERIODS,
+            V2_EXIT_CASH_EMA_RATIO_PCT,
+            V2_EXIT_CASH_CONFIRM_PERIODS,
+            V2_LOW_VOLUME_RESET,
+            V2_LOW_VOLUME_RESET_PERIODS
         );
     }
 
-    function test_constructor_reverts_when_lullReset_equals_period() public {
+    function test_constructor_reverts_when_idleReset_equals_period() public {
         DeployCfg memory cfg = _defaultCfg();
         cfg.idleResetSeconds = cfg.periodSeconds;
 
@@ -282,7 +282,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
 
     function test_constructor_reverts_when_emergency_floor_threshold_is_not_below_cash_threshold() public {
         DeployCfg memory cfg = _defaultCfg();
-        cfg.lowVolumeReset = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
+        cfg.lowVolumeReset = V2_ENTER_CASH_MIN_VOLUME;
 
         vm.expectRevert(VolumeDynamicFeeHook.InvalidConfig.selector);
         _deploy(cfg);

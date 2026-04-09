@@ -103,7 +103,7 @@ contract MeasureGasLive is LiveOpsBase {
             hook.emergencyReset(hook.MODE_CASH());
             return;
         }
-        if (operation == GasMeasurementLib.Operation.ClaimAllHookFees) {
+        if (operation == GasMeasurementLib.Operation.ClaimHookFees) {
             _resetToFloorUnpaused();
             _swapStableUsd6(_seedUsd6());
             hook.claimHookFees();

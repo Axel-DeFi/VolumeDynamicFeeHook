@@ -16,7 +16,7 @@ library GasMeasurementLib {
         Unpause,
         EmergencyResetToFloor,
         EmergencyResetToCash,
-        ClaimAllHookFees
+        ClaimHookFees
     }
 
     error UnsupportedGasOperation(string operation);
@@ -33,12 +33,12 @@ library GasMeasurementLib {
         if (id == keccak256("cash_to_extreme")) return Operation.CashToExtreme;
         if (id == keccak256("extreme_to_cash")) return Operation.ExtremeToCash;
         if (id == keccak256("cash_to_floor")) return Operation.CashToFloor;
-        if (id == keccak256("lull_reset")) return Operation.IdleReset;
+        if (id == keccak256("idle_reset")) return Operation.IdleReset;
         if (id == keccak256("pause")) return Operation.Pause;
         if (id == keccak256("unpause")) return Operation.Unpause;
         if (id == keccak256("emergency_reset_to_floor")) return Operation.EmergencyResetToFloor;
         if (id == keccak256("emergency_reset_to_cash")) return Operation.EmergencyResetToCash;
-        if (id == keccak256("claim_all_hook_fees")) return Operation.ClaimAllHookFees;
+        if (id == keccak256("claim_hook_fees")) return Operation.ClaimHookFees;
 
         revert UnsupportedGasOperation(raw);
     }
@@ -50,12 +50,12 @@ library GasMeasurementLib {
         if (op == Operation.CashToExtreme) return "cash_to_extreme";
         if (op == Operation.ExtremeToCash) return "extreme_to_cash";
         if (op == Operation.CashToFloor) return "cash_to_floor";
-        if (op == Operation.IdleReset) return "lull_reset";
+        if (op == Operation.IdleReset) return "idle_reset";
         if (op == Operation.Pause) return "pause";
         if (op == Operation.Unpause) return "unpause";
         if (op == Operation.EmergencyResetToFloor) return "emergency_reset_to_floor";
         if (op == Operation.EmergencyResetToCash) return "emergency_reset_to_cash";
-        return "claim_all_hook_fees";
+        return "claim_hook_fees";
     }
 
     function updateEmaScaled(uint96 emaBeforeScaled, uint64 closeVolUsd6, uint8 emaPeriods)

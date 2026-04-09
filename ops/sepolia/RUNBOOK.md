@@ -74,6 +74,8 @@ against the Sepolia rehearsal deployment.
 - optional `cancelOwnerTransfer()`
 - `acceptOwner()` by pending owner
 
+`acceptOwner()` also clears any pending `HookFee` change.
+
 ### HookFee percent timelock
 
 - `scheduleHookFeeChange(newPercent)`
@@ -95,26 +97,28 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 ## Runtime semantics reminder
 
 - `pause()`/`unpause()` are freeze/resume, not implicit floor reset.
-- Pause does not disable swaps and does not disable HookFee accrual.
+- Pause does not disable swaps and does suspend new HookFee accrual.
 - Emergency resets are explicit and paused-only: `emergencyReset(uint8 targetMode)`.
   - `targetMode` must be `MODE_FLOOR` (0) or `MODE_CASH` (1).
 - Cash is the default emergency target unless strict floor lockdown is required.
 - If reset target tier already equals current tier, state still resets and emits reset event, but no `FeeUpdated`.
 - Monitoring should consume reset events, not only fee update events.
 - Paused maintenance updates:
-  - `setControllerSettings(...)` preserves mode + EMA, clears counters, and starts a fresh open period.
-  - `setTimingSettings(...)` does a safe reset only for time-scale changes (`periodSeconds`/`emaPeriods`); changing only `lullResetSeconds` preserves mode + EMA + counters and restarts the open period only.
+  - `setModeFees(...)` is paused-only, preserves active mode + EMA, clears counters, starts a fresh open period, and syncs LP fee if the active mode fee changed.
+  - `setControllerSettings(...)` updates transition thresholds immediately without resetting EMA or counters.
+  - `setModel(...)` is paused-only and always performs the safe reset for `periodSeconds` / `emaPeriods` changes.
+  - `setResetSettings(...)` updates `idleResetSeconds`, `lowVolumeReset`, and `lowVolumeResetPeriods` immediately without resetting runtime state.
 
 ## Telemetry controls
 
-- `minCountedSwapVolume` filters dust from telemetry only.
+- `dustSwapThreshold` filters dust from telemetry only.
 - Swap execution and fee charging are unchanged for filtered trades.
-- Scheduled threshold changes activate only at next period boundary.
+- `setDustSwapThreshold(...)` applies immediately.
 - Allowed threshold update range is `1e6..10e6` (default `$4 / 4e6`, selected from observed v1 telemetry).
 - No timelock for threshold updates (project decision).
 - Recalibration target cadence: every 5 days from offchain analytics.
 - This is mitigation, not a formal proof against all fragmentation patterns on cheap L2.
-- Overdue catch-up can close multiple periods in one swap; only the first close uses accumulated close volume and later closes use zero close volume.
+- Overdue catch-up can close multiple periods in one swap; only the first close uses accumulated period volume and later closes use zero period volume.
 - Multi-close downward sequences are accepted architectural/economic behavior in this scope and should be monitored as notable routing/yield events.
 
 ## Accepted governance risks
@@ -127,16 +131,22 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
   frozen `ops/sepolia/config/deploy.env` constructor snapshot; current runtime/admin
   expectations come from `ops/sepolia/config/defaults.env` only when explicitly overridden, otherwise they inherit the
   frozen snapshot. Reuse also requires the exact minimal callback surface, exact PoolManager binding, current
-  `minCountedSwapVolume`, and zero pending owner / pending config changes.
+  `dustSwapThreshold`, and zero pending owner / pending HookFee change.
 
 Controller safety note:
-- `emergencyToFloorMaxCloseVolume` must remain strictly greater than zero.
-- `emergencyToFloorMaxCloseVolume` must remain strictly less than `floorToCashMinCloseVolume`.
-- Hold semantics are `N -> N - 1`; production guidance is `cashHoldPeriods >= 2`, `extremeHoldPeriods >= 2` (recommended `3..4`).
+- `lowVolumeReset` must remain strictly greater than zero.
+- `lowVolumeReset` must remain strictly less than `enterCashMinVolume`.
+- Hold semantics are `N -> N - 1`; production guidance is `holdCashPeriods >= 2`, `holdExtremePeriods >= 2` (recommended `3..4`).
 - Non-local deploy/preflight paths block weak hold configs by default; explicit override: `ALLOW_WEAK_HOLD_PERIODS=1`.
 
 ## Monitoring and response
 
-- Monitor `PeriodClosed` for repeated abnormal mode escalations.
-- Monitor admin/security events: `ModeFeesUpdated`, `ControllerSettingsUpdated`, `TimingSettingsUpdated`, `Paused`, `Unpaused`, emergency reset events.
+- Monitor `PeriodClosed`, `ControllerTransitionTrace`, and `FeeUpdated` for controller behavior.
+- Monitor owner and HookFee lifecycle events:
+  `OwnerTransferStarted`, `OwnerTransferCancelled`, `OwnerTransferAccepted`, `OwnerUpdated`,
+  `HookFeeChangeScheduled`, `HookFeeChangeCancelled`, `HookFeeChanged`, `HookFeesClaimed`.
+- Monitor config and safety events:
+  `ModeFeesUpdated`, `ControllerSettingsUpdated`, `ModelUpdated`, `ResetSettingsUpdated`,
+  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `EmergencyResetToFloorApplied`,
+  `EmergencyResetToCashApplied`.
 - Treat wash-trading / fee-poisoning as residual economic manipulation risk, especially on low-cost networks.

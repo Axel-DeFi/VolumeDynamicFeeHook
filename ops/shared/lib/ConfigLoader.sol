@@ -56,44 +56,44 @@ library ConfigLoader {
             _requirePipsFromPercentEither("EXTREME_FEE_PERCENT", "DEPLOY_EXTREME_FEE_PERCENT");
         cfg.periodSeconds = _requireUint32Either("PERIOD_SECONDS", "DEPLOY_PERIOD_SECONDS");
         cfg.emaPeriods = _requireUint8Either("EMA_PERIODS", "DEPLOY_EMA_PERIODS");
-        cfg.idleResetSeconds = _requireUint32Either("LULL_RESET_SECONDS", "DEPLOY_LULL_RESET_SECONDS");
+        cfg.idleResetSeconds = _requireUint32Either("IDLE_RESET_SECONDS", "DEPLOY_IDLE_RESET_SECONDS");
         cfg.hookFeePercent = _requireUint16Either("HOOK_FEE_PERCENT", "DEPLOY_HOOK_FEE_PERCENT");
-        cfg.dustSwapThreshold = EnvLib.envOrUint64("MIN_COUNTED_SWAP_VOLUME", DEFAULT_DUST_SWAP_THRESHOLD);
+        cfg.dustSwapThreshold = EnvLib.envOrUint64("DUST_SWAP_THRESHOLD", DEFAULT_DUST_SWAP_THRESHOLD);
         if (cfg.dustSwapThreshold < 1_000_000 || cfg.dustSwapThreshold > 10_000_000) {
-            revert ErrorLib.InvalidEnv("MIN_COUNTED_SWAP_VOLUME", "must be in 1000000..10000000");
+            revert ErrorLib.InvalidEnv("DUST_SWAP_THRESHOLD", "must be in 1000000..10000000");
         }
         cfg.enterCashMinVolume =
-            _requireUint64Either("FLOOR_TO_CASH_MIN_CLOSE_VOLUME", "DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME");
+            _requireUint64Either("ENTER_CASH_MIN_VOLUME", "DEPLOY_ENTER_CASH_MIN_VOLUME");
         cfg.enterCashEmaRatioPct =
-            _requirePctFromMultiplierXEither(
-                "FLOOR_TO_CASH_MIN_FLOW_EMA_X", "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X"
+            _requirePercentEither(
+                "ENTER_CASH_EMA_RATIO_PERCENT", "DEPLOY_ENTER_CASH_EMA_RATIO_PERCENT"
             );
-        cfg.holdCashPeriods = _requireUint8Either("CASH_HOLD_PERIODS", "DEPLOY_CASH_HOLD_PERIODS");
+        cfg.holdCashPeriods = _requireUint8Either("HOLD_CASH_PERIODS", "DEPLOY_HOLD_CASH_PERIODS");
         cfg.enterExtremeMinVolume = _requireUint64Either(
-            "CASH_TO_EXTREME_MIN_CLOSE_VOLUME", "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME"
+            "ENTER_EXTREME_MIN_VOLUME", "DEPLOY_ENTER_EXTREME_MIN_VOLUME"
         );
-        cfg.enterExtremeEmaRatioPct = _requirePctFromMultiplierXEither(
-            "CASH_TO_EXTREME_MIN_FLOW_EMA_X", "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X"
+        cfg.enterExtremeEmaRatioPct = _requirePercentEither(
+            "ENTER_EXTREME_EMA_RATIO_PERCENT", "DEPLOY_ENTER_EXTREME_EMA_RATIO_PERCENT"
         );
         cfg.enterExtremeConfirmPeriods =
-            _requireUint8Either("CASH_TO_EXTREME_CONFIRM_PERIODS", "DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS");
-        cfg.holdExtremePeriods = _requireUint8Either("EXTREME_HOLD_PERIODS", "DEPLOY_EXTREME_HOLD_PERIODS");
-        cfg.exitExtremeEmaRatioPct = _requirePctFromMultiplierXEither(
-            "EXTREME_TO_CASH_MAX_FLOW_EMA_X", "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X"
+            _requireUint8Either("ENTER_EXTREME_CONFIRM_PERIODS", "DEPLOY_ENTER_EXTREME_CONFIRM_PERIODS");
+        cfg.holdExtremePeriods = _requireUint8Either("HOLD_EXTREME_PERIODS", "DEPLOY_HOLD_EXTREME_PERIODS");
+        cfg.exitExtremeEmaRatioPct = _requirePercentEither(
+            "EXIT_EXTREME_EMA_RATIO_PERCENT", "DEPLOY_EXIT_EXTREME_EMA_RATIO_PERCENT"
         );
         cfg.exitExtremeConfirmPeriods =
-            _requireUint8Either("EXTREME_TO_CASH_CONFIRM_PERIODS", "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS");
+            _requireUint8Either("EXIT_EXTREME_CONFIRM_PERIODS", "DEPLOY_EXIT_EXTREME_CONFIRM_PERIODS");
         cfg.exitCashEmaRatioPct =
-            _requirePctFromMultiplierXEither("CASH_TO_FLOOR_MAX_FLOW_EMA_X", "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X");
+            _requirePercentEither("EXIT_CASH_EMA_RATIO_PERCENT", "DEPLOY_EXIT_CASH_EMA_RATIO_PERCENT");
         cfg.exitCashConfirmPeriods =
-            _requireUint8Either("CASH_TO_FLOOR_CONFIRM_PERIODS", "DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS");
+            _requireUint8Either("EXIT_CASH_CONFIRM_PERIODS", "DEPLOY_EXIT_CASH_CONFIRM_PERIODS");
         cfg.lowVolumeReset =
             _requireUint64Either(
-                "EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME", "DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME"
+                "LOW_VOLUME_RESET", "DEPLOY_LOW_VOLUME_RESET"
             );
         cfg.lowVolumeResetPeriods =
             _requireUint8Either(
-                "EMERGENCY_TO_FLOOR_CONFIRM_PERIODS", "DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS"
+                "LOW_VOLUME_RESET_PERIODS", "DEPLOY_LOW_VOLUME_RESET_PERIODS"
             );
 
         cfg.initPriceUsdE18 = EnvLib.envOrDecimalE18("INIT_PRICE_USD", 0);
@@ -166,69 +166,69 @@ library ConfigLoader {
             ? EnvLib.requireUint8("DEPLOY_EMA_PERIODS")
             : EnvLib.envOrUint8("DEPLOY_EMA_PERIODS", runtimeCfg.emaPeriods);
         cfg.idleResetSeconds = strict
-            ? EnvLib.requireUint32("DEPLOY_LULL_RESET_SECONDS")
-            : EnvLib.envOrUint32("DEPLOY_LULL_RESET_SECONDS", runtimeCfg.idleResetSeconds);
+            ? EnvLib.requireUint32("DEPLOY_IDLE_RESET_SECONDS")
+            : EnvLib.envOrUint32("DEPLOY_IDLE_RESET_SECONDS", runtimeCfg.idleResetSeconds);
         cfg.hookFeePercent = strict
             ? EnvLib.requireUint16("DEPLOY_HOOK_FEE_PERCENT")
             : EnvLib.envOrUint16("DEPLOY_HOOK_FEE_PERCENT", runtimeCfg.hookFeePercent);
         cfg.enterCashMinVolume = strict
-            ? EnvLib.requireUint64("DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME")
-            : EnvLib.envOrUint64("DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME", runtimeCfg.enterCashMinVolume);
+            ? EnvLib.requireUint64("DEPLOY_ENTER_CASH_MIN_VOLUME")
+            : EnvLib.envOrUint64("DEPLOY_ENTER_CASH_MIN_VOLUME", runtimeCfg.enterCashMinVolume);
         cfg.enterCashEmaRatioPct = strict
-            ? EnvLib.requirePctFromMultiplierX("DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X")
-            : EnvLib.envOrPctFromMultiplierX(
-                    "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X", runtimeCfg.enterCashEmaRatioPct
+            ? EnvLib.requirePercent("DEPLOY_ENTER_CASH_EMA_RATIO_PERCENT")
+            : EnvLib.envOrPercent(
+                    "DEPLOY_ENTER_CASH_EMA_RATIO_PERCENT", runtimeCfg.enterCashEmaRatioPct
                 );
         cfg.holdCashPeriods = strict
-            ? EnvLib.requireUint8("DEPLOY_CASH_HOLD_PERIODS")
-            : EnvLib.envOrUint8("DEPLOY_CASH_HOLD_PERIODS", runtimeCfg.holdCashPeriods);
+            ? EnvLib.requireUint8("DEPLOY_HOLD_CASH_PERIODS")
+            : EnvLib.envOrUint8("DEPLOY_HOLD_CASH_PERIODS", runtimeCfg.holdCashPeriods);
         cfg.enterExtremeMinVolume = strict
-            ? EnvLib.requireUint64("DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME")
+            ? EnvLib.requireUint64("DEPLOY_ENTER_EXTREME_MIN_VOLUME")
             : EnvLib.envOrUint64(
-                "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME", runtimeCfg.enterExtremeMinVolume
+                "DEPLOY_ENTER_EXTREME_MIN_VOLUME", runtimeCfg.enterExtremeMinVolume
             );
         cfg.enterExtremeEmaRatioPct = strict
-            ? EnvLib.requirePctFromMultiplierX("DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X")
-            : EnvLib.envOrPctFromMultiplierX(
-                "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X", runtimeCfg.enterExtremeEmaRatioPct
+            ? EnvLib.requirePercent("DEPLOY_ENTER_EXTREME_EMA_RATIO_PERCENT")
+            : EnvLib.envOrPercent(
+                "DEPLOY_ENTER_EXTREME_EMA_RATIO_PERCENT", runtimeCfg.enterExtremeEmaRatioPct
             );
         cfg.enterExtremeConfirmPeriods = strict
-            ? EnvLib.requireUint8("DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS")
+            ? EnvLib.requireUint8("DEPLOY_ENTER_EXTREME_CONFIRM_PERIODS")
             : EnvLib.envOrUint8(
-                "DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS", runtimeCfg.enterExtremeConfirmPeriods
+                "DEPLOY_ENTER_EXTREME_CONFIRM_PERIODS", runtimeCfg.enterExtremeConfirmPeriods
             );
         cfg.holdExtremePeriods = strict
-            ? EnvLib.requireUint8("DEPLOY_EXTREME_HOLD_PERIODS")
-            : EnvLib.envOrUint8("DEPLOY_EXTREME_HOLD_PERIODS", runtimeCfg.holdExtremePeriods);
+            ? EnvLib.requireUint8("DEPLOY_HOLD_EXTREME_PERIODS")
+            : EnvLib.envOrUint8("DEPLOY_HOLD_EXTREME_PERIODS", runtimeCfg.holdExtremePeriods);
         cfg.exitExtremeEmaRatioPct = strict
-            ? EnvLib.requirePctFromMultiplierX("DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X")
-            : EnvLib.envOrPctFromMultiplierX(
-                "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X", runtimeCfg.exitExtremeEmaRatioPct
+            ? EnvLib.requirePercent("DEPLOY_EXIT_EXTREME_EMA_RATIO_PERCENT")
+            : EnvLib.envOrPercent(
+                "DEPLOY_EXIT_EXTREME_EMA_RATIO_PERCENT", runtimeCfg.exitExtremeEmaRatioPct
             );
         cfg.exitExtremeConfirmPeriods = strict
-            ? EnvLib.requireUint8("DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS")
+            ? EnvLib.requireUint8("DEPLOY_EXIT_EXTREME_CONFIRM_PERIODS")
             : EnvLib.envOrUint8(
-                "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS", runtimeCfg.exitExtremeConfirmPeriods
+                "DEPLOY_EXIT_EXTREME_CONFIRM_PERIODS", runtimeCfg.exitExtremeConfirmPeriods
             );
         cfg.exitCashEmaRatioPct = strict
-            ? EnvLib.requirePctFromMultiplierX("DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X")
-            : EnvLib.envOrPctFromMultiplierX(
-                "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X", runtimeCfg.exitCashEmaRatioPct
+            ? EnvLib.requirePercent("DEPLOY_EXIT_CASH_EMA_RATIO_PERCENT")
+            : EnvLib.envOrPercent(
+                "DEPLOY_EXIT_CASH_EMA_RATIO_PERCENT", runtimeCfg.exitCashEmaRatioPct
             );
         cfg.exitCashConfirmPeriods = strict
-            ? EnvLib.requireUint8("DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS")
+            ? EnvLib.requireUint8("DEPLOY_EXIT_CASH_CONFIRM_PERIODS")
             : EnvLib.envOrUint8(
-                "DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS", runtimeCfg.exitCashConfirmPeriods
+                "DEPLOY_EXIT_CASH_CONFIRM_PERIODS", runtimeCfg.exitCashConfirmPeriods
             );
         cfg.lowVolumeReset = strict
-            ? EnvLib.requireUint64("DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME")
+            ? EnvLib.requireUint64("DEPLOY_LOW_VOLUME_RESET")
             : EnvLib.envOrUint64(
-                "DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME", runtimeCfg.lowVolumeReset
+                "DEPLOY_LOW_VOLUME_RESET", runtimeCfg.lowVolumeReset
             );
         cfg.lowVolumeResetPeriods = strict
-            ? EnvLib.requireUint8("DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS")
+            ? EnvLib.requireUint8("DEPLOY_LOW_VOLUME_RESET_PERIODS")
             : EnvLib.envOrUint8(
-                "DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS", runtimeCfg.lowVolumeResetPeriods
+                "DEPLOY_LOW_VOLUME_RESET_PERIODS", runtimeCfg.lowVolumeResetPeriods
             );
     }
 
@@ -376,13 +376,13 @@ library ConfigLoader {
         revert ErrorLib.MissingEnv(key);
     }
 
-    function _requirePctFromMultiplierXEither(string memory key, string memory fallbackKey)
+    function _requirePercentEither(string memory key, string memory fallbackKey)
         private
         view
         returns (uint16)
     {
-        if (EnvLib.hasKey(key)) return EnvLib.requirePctFromMultiplierX(key);
-        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requirePctFromMultiplierX(fallbackKey);
+        if (EnvLib.hasKey(key)) return EnvLib.requirePercent(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requirePercent(fallbackKey);
         revert ErrorLib.MissingEnv(key);
     }
 

@@ -8,19 +8,19 @@ contract OptimismConfigFilesTest is Test {
         string memory text = vm.readFile("ops/optimism/config/deploy.env");
 
         _assertContains(text, "DEPLOY_TICK_SPACING=60");
-        _assertContains(text, "DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME=400000000");
-        _assertContains(text, "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X=1.35");
-        _assertContains(text, "DEPLOY_CASH_HOLD_PERIODS=2");
-        _assertContains(text, "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME=2500000000");
-        _assertContains(text, "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X=4.10");
-        _assertContains(text, "DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS=2");
-        _assertContains(text, "DEPLOY_EXTREME_HOLD_PERIODS=2");
-        _assertContains(text, "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X=1.20");
-        _assertContains(text, "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS=2");
-        _assertContains(text, "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X=1.20");
-        _assertContains(text, "DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS=3");
-        _assertContains(text, "DEPLOY_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME=100000000");
-        _assertContains(text, "DEPLOY_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS=6");
+        _assertContains(text, "DEPLOY_ENTER_CASH_MIN_VOLUME=400000000");
+        _assertContains(text, "DEPLOY_ENTER_CASH_EMA_RATIO_PERCENT=135");
+        _assertContains(text, "DEPLOY_HOLD_CASH_PERIODS=2");
+        _assertContains(text, "DEPLOY_ENTER_EXTREME_MIN_VOLUME=2500000000");
+        _assertContains(text, "DEPLOY_ENTER_EXTREME_EMA_RATIO_PERCENT=410");
+        _assertContains(text, "DEPLOY_ENTER_EXTREME_CONFIRM_PERIODS=2");
+        _assertContains(text, "DEPLOY_HOLD_EXTREME_PERIODS=2");
+        _assertContains(text, "DEPLOY_EXIT_EXTREME_EMA_RATIO_PERCENT=120");
+        _assertContains(text, "DEPLOY_EXIT_EXTREME_CONFIRM_PERIODS=2");
+        _assertContains(text, "DEPLOY_EXIT_CASH_EMA_RATIO_PERCENT=120");
+        _assertContains(text, "DEPLOY_EXIT_CASH_CONFIRM_PERIODS=3");
+        _assertContains(text, "DEPLOY_LOW_VOLUME_RESET=100000000");
+        _assertContains(text, "DEPLOY_LOW_VOLUME_RESET_PERIODS=6");
     }
 
     function test_optimism_defaults_env_has_runtime_expectations_for_target_profile() public view {
@@ -28,20 +28,20 @@ contract OptimismConfigFilesTest is Test {
 
         _assertNotContains(text, "HOOK_ADDRESS=");
         _assertNotContains(text, "POOL_ID=");
-        _assertContains(text, "MIN_COUNTED_SWAP_VOLUME=4000000");
-        _assertContains(text, "FLOOR_TO_CASH_MIN_CLOSE_VOLUME=400000000");
-        _assertContains(text, "FLOOR_TO_CASH_MIN_FLOW_EMA_X=1.35");
-        _assertContains(text, "CASH_HOLD_PERIODS=2");
-        _assertContains(text, "CASH_TO_EXTREME_MIN_CLOSE_VOLUME=2500000000");
-        _assertContains(text, "CASH_TO_EXTREME_MIN_FLOW_EMA_X=4.10");
-        _assertContains(text, "CASH_TO_EXTREME_CONFIRM_PERIODS=2");
-        _assertContains(text, "EXTREME_HOLD_PERIODS=2");
-        _assertContains(text, "EXTREME_TO_CASH_MAX_FLOW_EMA_X=1.20");
-        _assertContains(text, "EXTREME_TO_CASH_CONFIRM_PERIODS=2");
-        _assertContains(text, "CASH_TO_FLOOR_MAX_FLOW_EMA_X=1.20");
-        _assertContains(text, "CASH_TO_FLOOR_CONFIRM_PERIODS=3");
-        _assertContains(text, "EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME=100000000");
-        _assertContains(text, "EMERGENCY_TO_FLOOR_CONFIRM_PERIODS=6");
+        _assertContains(text, "DUST_SWAP_THRESHOLD=4000000");
+        _assertContains(text, "ENTER_CASH_MIN_VOLUME=400000000");
+        _assertContains(text, "ENTER_CASH_EMA_RATIO_PERCENT=135");
+        _assertContains(text, "HOLD_CASH_PERIODS=2");
+        _assertContains(text, "ENTER_EXTREME_MIN_VOLUME=2500000000");
+        _assertContains(text, "ENTER_EXTREME_EMA_RATIO_PERCENT=410");
+        _assertContains(text, "ENTER_EXTREME_CONFIRM_PERIODS=2");
+        _assertContains(text, "HOLD_EXTREME_PERIODS=2");
+        _assertContains(text, "EXIT_EXTREME_EMA_RATIO_PERCENT=120");
+        _assertContains(text, "EXIT_EXTREME_CONFIRM_PERIODS=2");
+        _assertContains(text, "EXIT_CASH_EMA_RATIO_PERCENT=120");
+        _assertContains(text, "EXIT_CASH_CONFIRM_PERIODS=3");
+        _assertContains(text, "LOW_VOLUME_RESET=100000000");
+        _assertContains(text, "LOW_VOLUME_RESET_PERIODS=6");
     }
 
     function _assertContains(string memory haystack, string memory needle) internal pure {

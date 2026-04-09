@@ -17,7 +17,7 @@ contract ConstructorArgsConfigLibTest is Test, VolumeDynamicFeeHookV2DeployHelpe
     address internal constant TOKEN1 = address(0x0000000000000000000000000000000000002222);
     int24 internal constant TICK_SPACING = 10;
     uint32 internal constant PERIOD_SECONDS = 300;
-    uint32 internal constant LULL_RESET_SECONDS = 3600;
+    uint32 internal constant IDLE_RESET_SECONDS = 3600;
     uint8 internal constant EMA_PERIODS = 8;
 
     MockPoolManager internal manager;
@@ -86,20 +86,20 @@ contract ConstructorArgsConfigLibTest is Test, VolumeDynamicFeeHookV2DeployHelpe
         cfg.extremeFeePips = V2_DEFAULT_EXTREME_FEE;
         cfg.periodSeconds = PERIOD_SECONDS;
         cfg.emaPeriods = EMA_PERIODS;
-        cfg.idleResetSeconds = LULL_RESET_SECONDS;
+        cfg.idleResetSeconds = IDLE_RESET_SECONDS;
         cfg.hookFeePercent = hookFeePercent_;
-        cfg.enterCashMinVolume = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
-        cfg.enterCashEmaRatioPct = V2_FLOOR_TO_CASH_MIN_FLOW_PCT;
-        cfg.holdCashPeriods = V2_CASH_HOLD_PERIODS;
-        cfg.enterExtremeMinVolume = V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME;
-        cfg.enterExtremeEmaRatioPct = V2_CASH_TO_EXTREME_MIN_FLOW_PCT;
-        cfg.enterExtremeConfirmPeriods = V2_CASH_TO_EXTREME_CONFIRM_PERIODS;
-        cfg.holdExtremePeriods = V2_EXTREME_HOLD_PERIODS;
-        cfg.exitExtremeEmaRatioPct = V2_EXTREME_TO_CASH_MAX_FLOW_PCT;
-        cfg.exitExtremeConfirmPeriods = V2_EXTREME_TO_CASH_CONFIRM_PERIODS;
-        cfg.exitCashEmaRatioPct = V2_CASH_TO_FLOOR_MAX_FLOW_PCT;
-        cfg.exitCashConfirmPeriods = V2_CASH_TO_FLOOR_CONFIRM_PERIODS;
-        cfg.lowVolumeReset = V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME;
-        cfg.lowVolumeResetPeriods = V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS;
+        cfg.enterCashMinVolume = V2_ENTER_CASH_MIN_VOLUME;
+        cfg.enterCashEmaRatioPct = V2_ENTER_CASH_EMA_RATIO_PCT;
+        cfg.holdCashPeriods = V2_HOLD_CASH_PERIODS;
+        cfg.enterExtremeMinVolume = V2_ENTER_EXTREME_MIN_VOLUME;
+        cfg.enterExtremeEmaRatioPct = V2_ENTER_EXTREME_EMA_RATIO_PCT;
+        cfg.enterExtremeConfirmPeriods = V2_ENTER_EXTREME_CONFIRM_PERIODS;
+        cfg.holdExtremePeriods = V2_HOLD_EXTREME_PERIODS;
+        cfg.exitExtremeEmaRatioPct = V2_EXIT_EXTREME_EMA_RATIO_PCT;
+        cfg.exitExtremeConfirmPeriods = V2_EXIT_EXTREME_CONFIRM_PERIODS;
+        cfg.exitCashEmaRatioPct = V2_EXIT_CASH_EMA_RATIO_PCT;
+        cfg.exitCashConfirmPeriods = V2_EXIT_CASH_CONFIRM_PERIODS;
+        cfg.lowVolumeReset = V2_LOW_VOLUME_RESET;
+        cfg.lowVolumeResetPeriods = V2_LOW_VOLUME_RESET_PERIODS;
     }
 }

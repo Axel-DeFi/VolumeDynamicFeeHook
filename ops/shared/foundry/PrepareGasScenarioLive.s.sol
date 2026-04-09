@@ -29,8 +29,8 @@ contract PrepareGasScenarioLive is LiveOpsBase {
 
         VolumeDynamicFeeHook hook = VolumeDynamicFeeHook(payable(cfg.hookAddress));
         uint32 gasPeriodSeconds = uint32(vm.envOr("OPS_GAS_PERIOD_SECONDS", uint256(1)));
-        uint32 gasIdleResetSeconds = uint32(vm.envOr("OPS_GAS_LULL_RESET_SECONDS", uint256(2)));
-        require(gasIdleResetSeconds > gasPeriodSeconds, "OPS_GAS_LULL_RESET_SECONDS must exceed OPS_GAS_PERIOD_SECONDS");
+        uint32 gasIdleResetSeconds = uint32(vm.envOr("OPS_GAS_IDLE_RESET_SECONDS", uint256(2)));
+        require(gasIdleResetSeconds > gasPeriodSeconds, "OPS_GAS_IDLE_RESET_SECONDS must exceed OPS_GAS_PERIOD_SECONDS");
 
         string memory snapshotPath = vm.envOr(
             "OPS_GAS_TIMING_SNAPSHOT",
@@ -55,7 +55,8 @@ contract PrepareGasScenarioLive is LiveOpsBase {
         if (!wasPaused) {
             hook.pause();
         }
-        hook.setTimingSettings(gasPeriodSeconds, hook.emaPeriods(), gasIdleResetSeconds);
+        hook.setModel(gasPeriodSeconds, hook.emaPeriods());
+        hook.setResetSettings(gasIdleResetSeconds, hook.lowVolumeReset(), hook.lowVolumeResetPeriods());
         hook.emergencyReset(hook.MODE_FLOOR());
         if (cfg.stableToken != address(0)) {
             IERC20Minimal(cfg.stableToken).approve(driver, type(uint256).max);

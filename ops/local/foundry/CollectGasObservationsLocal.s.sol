@@ -16,7 +16,7 @@ import {ConfigLoader} from "../../shared/lib/ConfigLoader.sol";
 import {OpsTypes} from "../../shared/types/OpsTypes.sol";
 
 contract CollectGasObservationsLocal is Script {
-    uint32 internal constant MAX_LULL_PERIODS = 24;
+    uint32 internal constant MAX_IDLE_PERIODS = 24;
 
     function run() external {
         OpsTypes.CoreConfig memory cfg = ConfigLoader.loadCoreConfig();
@@ -38,9 +38,8 @@ contract CollectGasObservationsLocal is Script {
         VolumeDynamicFeeHook hook = VolumeDynamicFeeHook(payable(cfg.hookAddress));
         MockPoolManager manager = MockPoolManager(payable(cfg.poolManager));
         uint32 periodSeconds = hook.periodSeconds();
-        uint8 emaPeriods = hook.emaPeriods();
         uint32 idleResetSeconds = hook.idleResetSeconds();
-        uint256 worstCaseIdleResetRaw = uint256(periodSeconds) * uint256(MAX_LULL_PERIODS);
+        uint256 worstCaseIdleResetRaw = uint256(periodSeconds) * uint256(MAX_IDLE_PERIODS);
         require(worstCaseIdleResetRaw <= type(uint32).max, "periodSeconds too large");
         uint32 worstCaseIdleResetSeconds = uint32(worstCaseIdleResetRaw);
         uint256 worstCaseCatchUpWarpSeconds = worstCaseIdleResetRaw - 1;
@@ -51,7 +50,7 @@ contract CollectGasObservationsLocal is Script {
         }
         if (idleResetSeconds != worstCaseIdleResetSeconds) {
             hook.pause();
-            hook.setTimingSettings(periodSeconds, emaPeriods, worstCaseIdleResetSeconds);
+            hook.setResetSettings(worstCaseIdleResetSeconds, hook.lowVolumeReset(), hook.lowVolumeResetPeriods());
             hook.unpause();
             idleResetSeconds = worstCaseIdleResetSeconds;
         }
@@ -63,11 +62,11 @@ contract CollectGasObservationsLocal is Script {
         vm.warp(block.timestamp + uint256(periodSeconds));
         manager.callAfterSwap(hook, key, toBalanceDelta(0, 0));
 
-        // Worst-case catch-up: close MAX_LULL_PERIODS - 1 periods just below lull reset.
+        // Worst-case catch-up: close MAX_IDLE_PERIODS - 1 periods just below idle reset.
         vm.warp(block.timestamp + worstCaseCatchUpWarpSeconds);
         manager.callAfterSwap(hook, key, toBalanceDelta(0, 0));
 
-        // First swap after lull-reset threshold.
+        // First swap after idle-reset threshold.
         vm.warp(block.timestamp + uint256(idleResetSeconds) + 1);
         manager.callAfterSwap(hook, key, _stableDelta(cfg, swapAmountRaw));
 

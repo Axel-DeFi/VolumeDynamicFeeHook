@@ -91,7 +91,7 @@ library HookValidationLib {
 
         if (hook.dustSwapThreshold() != cfg.dustSwapThreshold) {
             validation.ok = false;
-            validation.reason = "hook min counted swap mismatch";
+            validation.reason = "hook dust swap threshold mismatch";
             return validation;
         }
 
@@ -104,12 +104,18 @@ library HookValidationLib {
             return validation;
         }
 
+        if (hook.periodSeconds() != cfg.periodSeconds || hook.emaPeriods() != cfg.emaPeriods) {
+            validation.ok = false;
+            validation.reason = "hook model config mismatch";
+            return validation;
+        }
+
         if (
-            hook.periodSeconds() != cfg.periodSeconds || hook.emaPeriods() != cfg.emaPeriods
-                || hook.idleResetSeconds() != cfg.idleResetSeconds
+            hook.idleResetSeconds() != cfg.idleResetSeconds || hook.lowVolumeReset() != cfg.lowVolumeReset
+                || hook.lowVolumeResetPeriods() != cfg.lowVolumeResetPeriods
         ) {
             validation.ok = false;
-            validation.reason = "hook timing config mismatch";
+            validation.reason = "hook reset config mismatch";
             return validation;
         }
 
@@ -125,8 +131,6 @@ library HookValidationLib {
                 || hook.exitExtremeConfirmPeriods() != cfg.exitExtremeConfirmPeriods
                 || hook.exitCashEmaRatioPct() != cfg.exitCashEmaRatioPct
                 || hook.exitCashConfirmPeriods() != cfg.exitCashConfirmPeriods
-                || hook.lowVolumeReset() != cfg.lowVolumeReset
-                || hook.lowVolumeResetPeriods() != cfg.lowVolumeResetPeriods
         ) {
             validation.ok = false;
             validation.reason = "hook controller config mismatch";

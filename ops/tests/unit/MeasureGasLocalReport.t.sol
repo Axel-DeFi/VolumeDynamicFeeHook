@@ -109,7 +109,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             || operation == GasMeasurementLib.Operation.Unpause
             || operation == GasMeasurementLib.Operation.EmergencyResetToFloor
             || operation == GasMeasurementLib.Operation.EmergencyResetToCash
-            || operation == GasMeasurementLib.Operation.ClaimAllHookFees;
+            || operation == GasMeasurementLib.Operation.ClaimHookFees;
 
         if (ownerOp) {
             vm.startPrank(vm.addr(1));

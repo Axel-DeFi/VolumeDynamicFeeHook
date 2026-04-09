@@ -73,6 +73,7 @@ Two-step transfer is mandatory:
 Guardrails:
 - `proposeNewOwner(address(0))` reverts.
 - `proposeNewOwner(currentOwner)` reverts (self-pending-owner is disallowed).
+- `acceptOwner()` clears any pending HookFee change before ownership finishes moving.
 
 Events:
 - `OwnerTransferStarted`
@@ -84,7 +85,7 @@ Events:
 
 - `idleResetSeconds` must be strictly greater than `periodSeconds`.
 - Equality (`idleResetSeconds == periodSeconds`) is rejected.
-- Upper bound remains `idleResetSeconds <= periodSeconds * MAX_LULL_PERIODS`.
+- Upper bound remains `idleResetSeconds <= periodSeconds * MAX_IDLE_PERIODS`.
 - `setModel(...)` updates `periodSeconds` / `emaPeriods` while paused and always performs a safe reset:
   FLOOR mode, EMA reset, hold/streak counters reset, fresh open period, immediate LP-fee sync when active tier changes.
 - `setResetSettings(...)` updates `idleResetSeconds`, `lowVolumeReset`, and `lowVolumeResetPeriods`
@@ -130,6 +131,15 @@ Current validated ranges:
 - `exitExtremeConfirmPeriods`, `exitCashConfirmPeriods`, `lowVolumeResetPeriods`: `1..15`
 
 Invalid combinations revert with `InvalidConfig`.
+
+## Owner configuration groups
+
+- `setModeFees(...)`: paused-only explicit LP-fee triplet maintenance.
+- `setControllerSettings(...)`: live controller-threshold update path.
+- `setResetSettings(...)`: live reset-threshold update path.
+- `setModel(...)`: paused-only model change for `periodSeconds` / `emaPeriods`.
+- `setDustSwapThreshold(...)`: live telemetry-only dust-filter update.
+- `scheduleHookFeeChange(...)` / `cancelHookFeeChange()` / `executeHookFeeChange()`: separate timelocked HookFee lifecycle.
 
 Admin update behavior:
 - `setModeFees(...)` is paused-only, preserves active mode id + EMA, clears hold/streak counters, starts a fresh open period,
@@ -337,13 +347,28 @@ Rescue surface:
 
 ## Event coverage
 
-All admin state transitions emit events, including:
-- ownership transitions,
-- timelock schedule/cancel/execute,
-- direct dust-threshold updates,
-- pause/unpause,
-- emergency resets,
-- controller/mode/model/reset updates.
+Ownership and owner-transfer events:
+- `OwnerTransferStarted`
+- `OwnerTransferCancelled`
+- `OwnerTransferAccepted`
+- `OwnerUpdated`
+
+HookFee lifecycle events:
+- `HookFeeChangeScheduled`
+- `HookFeeChangeCancelled`
+- `HookFeeChanged`
+- `HookFeesClaimed`
+
+Config / pause / emergency events:
+- `ModeFeesUpdated`
+- `ControllerSettingsUpdated`
+- `ModelUpdated`
+- `ResetSettingsUpdated`
+- `DustSwapThresholdChanged`
+- `Paused`
+- `Unpaused`
+- `EmergencyResetToFloorApplied`
+- `EmergencyResetToCashApplied`
 
 Monitoring interpretation note:
 - `downStreak` is context-dependent and must be interpreted together with current `feeIdx`.
@@ -391,7 +416,7 @@ Any non-exact dynamic-flag encoding is rejected (`NotDynamicFeePool`).
 ## Gas interpretation note
 
 - inactivity catch-up overhead in period-closing logic is bounded by construction (`periods = elapsed / periodSeconds` with explicit loop semantics).
-- measurement flow includes: normal swap, single-period close, idle reset, and worst-case catch-up (`MAX_LULL_PERIODS - 1` closed periods with inactivity just below idle reset).
+- measurement flow includes: normal swap, single-period close, idle reset, and worst-case catch-up (`MAX_IDLE_PERIODS - 1` closed periods with inactivity just below idle reset).
 - gas observations in this repository are engineering measurements, environment-dependent.
 - this is not presented as a formal, exhaustive gas audit.
 - latest local observation artifacts:

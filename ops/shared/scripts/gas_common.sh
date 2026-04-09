@@ -13,12 +13,12 @@ floor_to_cash
 cash_to_extreme
 extreme_to_cash
 cash_to_floor
-lull_reset
+idle_reset
 pause
 unpause
 emergency_reset_to_floor
 emergency_reset_to_cash
-claim_all_hook_fees
+claim_hook_fees
 EOF
 }
 
