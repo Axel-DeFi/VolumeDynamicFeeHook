@@ -26,7 +26,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Fixed-point scale used by Uniswap LP fee tiers (1e6 = 100%).
     uint256 private constant FEE_SCALE = 1_000_000;
 
-    /// @notice Scaler used for EMA precision. Stored EMA units are USD6 * EMA_SCALE.
+    /// @notice Scaler used for EMA precision. Stored EMA units are internal 6-decimal USD scale * EMA_SCALE.
     uint256 private constant EMA_SCALE = 1_000_000;
 
     /// @notice Hard maximum for the hook fee percent used by the hook settlement formula.
@@ -41,10 +41,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Default minimum swap notional counted into period volume telemetry.
     uint64 public constant DEFAULT_DUST_SWAP_THRESHOLD = 4_000_000;
 
-    /// @notice Minimum allowed dust-swap threshold (USD6).
+    /// @notice Minimum allowed dust-swap threshold in the internal 6-decimal USD scale.
     uint64 public constant MIN_DUST_SWAP_THRESHOLD = 1_000_000;
 
-    /// @notice Maximum allowed dust-swap threshold (USD6).
+    /// @notice Maximum allowed dust-swap threshold in the internal 6-decimal USD scale.
     uint64 public constant MAX_DUST_SWAP_THRESHOLD = 10_000_000;
 
     uint16 private constant MAX_LULL_PERIODS = 24;
@@ -193,7 +193,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @dev Holds unpacked state fields and per-call temporaries to reduce stack depth
     ///      and enable clean decomposition into helper functions.
     struct AfterSwapCtx {
-        uint64 periodVol;
+        uint64 periodVolume;
         uint96 emaVolScaled;
         uint64 periodStart;
         uint8 feeIdx;
@@ -206,7 +206,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint64 nowTs;
         uint64 elapsed;
         bool feeChanged;
-        uint64 closeVolForEvent;
+        uint64 periodVolumeForEvent;
         int128 hookFeeDelta;
     }
 
@@ -302,13 +302,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     event ResetSettingsUpdated(uint32 idleResetSeconds, uint64 lowVolumeReset, uint8 lowVolumeResetPeriods);
 
     /// @notice Emitted when a hook fee percent change is scheduled through timelock.
-    event HookFeeChangeScheduled(uint16 newHookFee, uint64 executeAfter);
+    event HookFeeChangeScheduled(uint16 hookFeePercent, uint64 executeAfter);
 
     /// @notice Emitted when scheduled hook fee percent change is cancelled.
-    event HookFeeChangeCancelled(uint16 cancelledHookFee);
+    event HookFeeChangeCancelled(uint16 hookFeePercent);
 
     /// @notice Emitted when hook fee percent is executed and applied.
-    event HookFeeChanged(uint16 oldHookFee, uint16 newHookFee);
+    event HookFeeChanged(uint16 previousHookFeePercent, uint16 hookFeePercent);
 
     /// @notice Emitted when dust-swap threshold is updated.
     event DustSwapThresholdChanged(uint64 previousValue, uint64 newValue);
@@ -390,7 +390,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Bound pool tick spacing.
     int24 public immutable poolTickSpacing;
 
-    /// @notice Stable-side token used for USD6 volume telemetry.
+    /// @notice Stable-side token used for internal 6-decimal USD-scale volume telemetry.
     Currency public immutable stableCurrency;
 
     /// @notice Configured decimals mode for stable-side telemetry scaling.
@@ -418,12 +418,12 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @param _idleResetSeconds Idle-reset inactivity threshold in seconds. Must be strictly greater than `_periodSeconds`.
     /// @param ownerAddr Initial owner address.
     /// @param hookFeePercent_ Initial hook fee percent used by the hook settlement formula.
-    /// @param _enterCashMinVolume Minimum close volume for floor->cash transition.
+    /// @param _enterCashMinVolume Minimum period volume for floor->cash transition.
     /// @param _enterCashEmaRatioPct Minimum period-volume / EMA ratio, in percent, required to enter cash mode.
     /// @param _holdCashPeriods Configured cash hold length `N`. Hold blocks only the ordinary cash->floor path, emergency
     /// still counts, effective fully protected periods are `N - 1`, and the earliest ordinary cash->floor close under
     /// uninterrupted weakness is `holdCashPeriods + exitCashConfirmPeriods - 1`.
-    /// @param _enterExtremeMinVolume Minimum close volume for cash->extreme transition.
+    /// @param _enterExtremeMinVolume Minimum period volume for cash->extreme transition.
     /// @param _enterExtremeEmaRatioPct Minimum period-volume / EMA ratio, in percent, required to enter extreme mode.
     /// @param _enterExtremeConfirmPeriods Confirmation periods for cash->extreme transition.
     /// @param _holdExtremePeriods Hold periods after entering extreme. Hold blocks only the ordinary extreme->cash path,
@@ -433,7 +433,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @param _exitExtremeConfirmPeriods Confirmation periods for extreme->cash transition.
     /// @param _exitCashEmaRatioPct Maximum period-volume / EMA ratio, in percent, below which cash mode may exit.
     /// @param _exitCashConfirmPeriods Confirmation periods for cash->floor transition.
-    /// @param _lowVolumeReset Emergency floor trigger threshold (`> 0` and strictly below `_enterCashMinVolume`).
+    /// @param _lowVolumeReset Low-volume reset threshold (`> 0` and strictly below `_enterCashMinVolume`).
     /// @param _lowVolumeResetPeriods Consecutive confirmations for emergency floor trigger. The earliest
     /// emergency descent under uninterrupted weakness is `lowVolumeResetPeriods`.
     constructor(
@@ -616,7 +616,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @dev Pure context preparation with no state mutations.
     function _loadAfterSwapCtx() internal view returns (AfterSwapCtx memory ctx) {
         (
-            ctx.periodVol,
+            ctx.periodVolume,
             ctx.emaVolScaled,
             ctx.periodStart,
             ctx.feeIdx,
@@ -660,10 +660,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ctx.downStreak = 0;
         ctx.emergencyStreak = 0;
 
-        ctx.periodVol = _addSwapVolumeUsd6(0, delta);
+        ctx.periodVolume = _addSwapVolumeUsd(0, delta);
 
         _state = _packState(
-            ctx.periodVol,
+            ctx.periodVolume,
             ctx.emaVolScaled,
             ctx.periodStart,
             ctx.feeIdx,
@@ -708,8 +708,8 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (ctx.elapsed < _config.periodSeconds) return;
 
         uint64 periods = ctx.elapsed / uint64(_config.periodSeconds);
-        uint64 closeVol0 = ctx.periodVol;
-        ctx.closeVolForEvent = closeVol0;
+        uint64 firstPeriodVolume = ctx.periodVolume;
+        ctx.periodVolumeForEvent = firstPeriodVolume;
         uint64 periodStart0 = ctx.periodStart;
 
         uint8 prevFeeIdx = ctx.feeIdx;
@@ -722,7 +722,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 emergency = ctx.emergencyStreak;
 
         for (uint64 i = 0; i < periods; ++i) {
-            uint64 closeVol = i == 0 ? closeVol0 : uint64(0);
+            uint64 periodVolume = i == 0 ? firstPeriodVolume : uint64(0);
             uint64 closedPeriodStart = periodStart0 + i * uint64(_config.periodSeconds);
             uint16 stateBitsBefore =
                 _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
@@ -731,7 +731,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             uint24 fromFee = _modeFee(fromFeeIdx);
 
             (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory transition) =
-                _stepController(ema, f, closeVol, hold, upStreak, down, emergency);
+                _stepController(ema, f, periodVolume, hold, upStreak, down, emergency);
             ema = emaAfter;
             f = transition.feeIdx;
             hold = transition.holdRemaining;
@@ -746,10 +746,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
                     fromFeeIdx: fromFeeIdx,
                     toFee: _modeFee(f),
                     toFeeIdx: f,
-                    periodVolume: closeVol,
+                    periodVolume: periodVolume,
                     emaVolumeBefore: emaBefore,
                     emaVolumeAfter: ema,
-                    approxLpFeesUsd: _estimateApproxLpFeesUsd6(closeVol, fromFee),
+                    approxLpFeesUsd: _estimateApproxLpFeesUsd(periodVolume, fromFee),
                     decisionBits: transition.decisionBits,
                     stateBitsBefore: stateBitsBefore,
                     stateBitsAfter: _packControllerTransitionCounters(
@@ -770,7 +770,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
         ctx.periodStart = ctx.periodStart + periods * uint64(_config.periodSeconds);
 
-        ctx.periodVol = 0;
+        ctx.periodVolume = 0;
     }
 
     /// @notice Adds current swap volume, persists packed state, and syncs the dynamic LP fee.
@@ -779,10 +779,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         BalanceDelta delta,
         AfterSwapCtx memory ctx
     ) internal {
-        ctx.periodVol = _addSwapVolumeUsd6(ctx.periodVol, delta);
+        ctx.periodVolume = _addSwapVolumeUsd(ctx.periodVolume, delta);
 
         _state = _packState(
-            ctx.periodVol,
+            ctx.periodVolume,
             ctx.emaVolScaled,
             ctx.periodStart,
             ctx.feeIdx,
@@ -796,7 +796,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (ctx.feeChanged) {
             uint24 activeFee = _modeFee(ctx.feeIdx);
             poolManager.updateDynamicLPFee(key, activeFee);
-            _emitFeeUpdate(activeFee, ctx.feeIdx, ctx.closeVolForEvent, ctx.emaVolScaled);
+            _emitFeeUpdate(activeFee, ctx.feeIdx, ctx.periodVolumeForEvent, ctx.emaVolScaled);
         }
     }
 
@@ -818,8 +818,8 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Returns packed runtime fields used by offchain telemetry.
-    /// @return periodVolume Counted stable-side period volume in USD6.
-    /// @return emaVolumeScaled Scaled EMA in USD6 * 1e6.
+    /// @return periodVolume Counted stable-side period volume in the internal 6-decimal USD scale.
+    /// @return emaVolumeScaled Scaled EMA in the internal 6-decimal USD scale * 1e6.
     /// @return periodStart Current period start timestamp.
     /// @return feeIdx Active mode id (`0` floor, `1` cash, `2` extreme).
     function unpackedState()
@@ -949,7 +949,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return _config.hookFeePercent;
     }
 
-    /// @notice Returns minimum swap size below which a swap is treated as dust and ignored for meaningful flow accounting.
+    /// @notice Returns minimum swap size below which a swap is treated as dust and ignored for period-volume telemetry.
     function dustSwapThreshold() public view returns (uint64) {
         return _config.dustSwapThreshold;
     }
@@ -958,7 +958,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     function pendingHookFeeChange()
         external
         view
-        returns (bool exists, uint16 nextValue, uint64 executeAfter)
+        returns (bool exists, uint16 pendingHookFeePercent, uint64 executeAfter)
     {
         return (_hasPendingHookFeeChange, _pendingHookFeePercent, _pendingHookFeeExecuteAfter);
     }
@@ -1012,13 +1012,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             uint8 downStreak,
             uint8 emergencyStreak,
             uint64 periodStart,
-            uint64 periodVol,
+            uint64 periodVolume,
             uint96 emaVolScaled,
             bool paused
         )
     {
         (
-            periodVol,
+            periodVolume,
             emaVolScaled,
             periodStart,
             feeIdx,
@@ -1077,16 +1077,16 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Schedules HookFee percent change through 48h timelock.
-    function scheduleHookFeeChange(uint16 newHookFeePercent) external onlyOwner {
+    function scheduleHookFeeChange(uint16 hookFeePercent) external onlyOwner {
         if (_hasPendingHookFeeChange) revert PendingHookFeeChangeExists();
-        _validateHookFeePercent(newHookFeePercent);
+        _validateHookFeePercent(hookFeePercent);
 
         uint64 executeAfter = _now64() + HOOK_FEE_PERCENT_CHANGE_DELAY;
         _hasPendingHookFeeChange = true;
-        _pendingHookFeePercent = newHookFeePercent;
+        _pendingHookFeePercent = hookFeePercent;
         _pendingHookFeeExecuteAfter = executeAfter;
 
-        emit HookFeeChangeScheduled(newHookFeePercent, executeAfter);
+        emit HookFeeChangeScheduled(hookFeePercent, executeAfter);
     }
 
     /// @notice Cancels scheduled HookFee percent change.
@@ -1120,7 +1120,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Sets dust-swap threshold immediately.
-    /// @dev Allowed range is `[1e6, 10e6]` in USD6 units.
+    /// @dev Allowed range is `[1e6, 10e6]` in the internal 6-decimal USD scale.
     function setDustSwapThreshold(uint64 newDustSwapThreshold) external onlyOwner {
         _validateDustSwapThreshold(newDustSwapThreshold);
         uint64 previousValue = _config.dustSwapThreshold;
@@ -1305,7 +1305,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _emergencyReset(targetMode, targetMode == MODE_FLOOR);
     }
 
-    /// @notice Claims all accrued HookFees to current `owner()`.
+    /// @notice Claims the full currently accrued HookFee balances to current `owner()`.
     /// @dev Uses PoolManager accounting withdrawal flow (`unlock` -> `burn` -> `take`) to transfer funds to recipient.
     function claimHookFees() external onlyOwner {
         _claimHookFeesInternal(_owner, _hookFees0, _hookFees1);
@@ -1352,19 +1352,19 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _owner = newOwner;
     }
 
-    function _validateHookFeePercent(uint16 newHookFeePercent) internal pure {
-        if (newHookFeePercent > MAX_HOOK_FEE_PERCENT) {
-            revert HookFeeLimitExceeded(newHookFeePercent, MAX_HOOK_FEE_PERCENT);
+    function _validateHookFeePercent(uint16 hookFeePercent_) internal pure {
+        if (hookFeePercent_ > MAX_HOOK_FEE_PERCENT) {
+            revert HookFeeLimitExceeded(hookFeePercent_, MAX_HOOK_FEE_PERCENT);
         }
     }
 
-    function _setHookFeePercentInternal(uint16 newHookFeePercent) internal {
-        _validateHookFeePercent(newHookFeePercent);
-        _config.hookFeePercent = newHookFeePercent;
+    function _setHookFeePercentInternal(uint16 hookFeePercent_) internal {
+        _validateHookFeePercent(hookFeePercent_);
+        _config.hookFeePercent = hookFeePercent_;
     }
 
     /// @notice Validates dust-swap threshold bounds.
-    /// @dev Allowed range is `[1e6, 10e6]` in USD6 units.
+    /// @dev Allowed range is `[1e6, 10e6]` in the internal 6-decimal USD scale.
     function _validateDustSwapThreshold(uint64 newDustSwapThreshold_) internal pure {
         if (
             newDustSwapThreshold_ < MIN_DUST_SWAP_THRESHOLD
@@ -1448,24 +1448,24 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         _config.extremeFee = extremeFee_;
     }
 
-    function _emergencyReset(uint8 targetFeeIdx, bool toFloor) internal {
+    function _emergencyReset(uint8 targetMode, bool toFloor) internal {
         (,, uint64 periodStart, uint8 prevFeeIdx, bool paused_,,,,) = _unpackState(_state);
 
         if (periodStart == 0) revert NotInitialized();
 
         uint64 nowTs = _now64();
-        _state = _packState(0, 0, nowTs, targetFeeIdx, paused_, 0, 0, 0, 0);
+        _state = _packState(0, 0, nowTs, targetMode, paused_, 0, 0, 0, 0);
 
-        if (prevFeeIdx != targetFeeIdx) {
-            uint24 targetFee = _modeFee(targetFeeIdx);
+        if (prevFeeIdx != targetMode) {
+            uint24 targetFee = _modeFee(targetMode);
             poolManager.updateDynamicLPFee(_poolKey(), targetFee);
-            emit FeeUpdated(targetFee, targetFeeIdx, 0, 0);
+            emit FeeUpdated(targetFee, targetMode, 0, 0);
         }
 
         if (toFloor) {
-            emit EmergencyResetToFloorApplied(targetFeeIdx, nowTs, 0);
+            emit EmergencyResetToFloorApplied(targetMode, nowTs, 0);
         } else {
-            emit EmergencyResetToCashApplied(targetFeeIdx, nowTs, 0);
+            emit EmergencyResetToCashApplied(targetMode, nowTs, 0);
         }
     }
 
@@ -1609,41 +1609,41 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         poolManager.mint(address(this), unspecifiedCurrency.toId(), hookFeeAmount);
     }
 
-    function _addSwapVolumeUsd6(uint64 current, BalanceDelta delta) internal view returns (uint64) {
+    function _addSwapVolumeUsd(uint64 current, BalanceDelta delta) internal view returns (uint64) {
         int128 stableAmount = _stableIsCurrency0 ? delta.amount0() : delta.amount1();
         uint256 absStable = stableAmount < 0 ? uint256(-int256(stableAmount)) : uint256(uint128(stableAmount));
 
-        uint256 usd6 = _toUsd6(absStable);
-        if (usd6 < _config.dustSwapThreshold) {
+        uint256 usdAmount = _toUsdScale(absStable);
+        if (usdAmount < _config.dustSwapThreshold) {
             return current;
         }
 
-        uint256 sum = uint256(current) + usd6;
+        uint256 sum = uint256(current) + usdAmount;
         if (sum > type(uint64).max) return type(uint64).max;
         return uint64(sum);
     }
 
-    function _toUsd6(uint256 stableAmount) internal view returns (uint256) {
+    function _toUsdScale(uint256 stableAmount) internal view returns (uint256) {
         if (_stableScale == 1) return stableAmount;
         return stableAmount / _stableScale;
     }
 
-    function _updateEmaScaled(uint96 emaScaled, uint64 closeVol) internal view returns (uint96) {
+    function _updateEmaScaled(uint96 emaScaled, uint64 periodVolume) internal view returns (uint96) {
         if (emaScaled == 0) {
-            if (closeVol == 0) return 0;
-            uint256 seeded = uint256(closeVol) * EMA_SCALE;
+            if (periodVolume == 0) return 0;
+            uint256 seeded = uint256(periodVolume) * EMA_SCALE;
             if (seeded > type(uint96).max) return type(uint96).max;
             return uint96(seeded);
         }
 
         uint256 n = uint256(_config.emaPeriods);
-        uint256 updated = (uint256(emaScaled) * (n - 1) + uint256(closeVol) * EMA_SCALE) / n;
+        uint256 updated = (uint256(emaScaled) * (n - 1) + uint256(periodVolume) * EMA_SCALE) / n;
         if (updated > type(uint96).max) return type(uint96).max;
         return uint96(updated);
     }
 
-    function _estimateApproxLpFeesUsd6(uint64 closeVol, uint24 feeBips) internal pure returns (uint64) {
-        uint256 fees = (uint256(closeVol) * uint256(feeBips)) / FEE_SCALE;
+    function _estimateApproxLpFeesUsd(uint64 periodVolume, uint24 feeBips) internal pure returns (uint64) {
+        uint256 fees = (uint256(periodVolume) * uint256(feeBips)) / FEE_SCALE;
         if (fees > type(uint64).max) return type(uint64).max;
         return uint64(fees);
     }
@@ -1709,7 +1709,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     function _stepController(
         uint96 ema,
         uint8 feeIdx,
-        uint64 closeVol,
+        uint64 periodVolume,
         uint8 holdRemaining,
         uint8 upExtremeStreak,
         uint8 downStreak,
@@ -1720,10 +1720,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         returns (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory transition)
     {
         emaBefore = ema;
-        emaAfter = _updateEmaScaled(ema, closeVol);
-        bool bootstrapV2 = emaBefore == 0 && closeVol > 0;
+        emaAfter = _updateEmaScaled(ema, periodVolume);
+        bool bootstrapV2 = emaBefore == 0 && periodVolume > 0;
         transition = _computeNextModeV2(
-            feeIdx, closeVol, emaAfter, bootstrapV2, holdRemaining, upExtremeStreak, downStreak, emergencyStreak
+            feeIdx, periodVolume, emaAfter, bootstrapV2, holdRemaining, upExtremeStreak, downStreak, emergencyStreak
         );
     }
 
@@ -1737,7 +1737,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// `lowVolumeResetPeriods`.
     function _computeNextModeV2(
         uint8 feeIdx,
-        uint64 closeVol,
+        uint64 periodVolume,
         uint96 emaVolScaled,
         bool bootstrapV2,
         uint8 holdRemaining,
@@ -1750,7 +1750,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         result.upExtremeStreak = upExtremeStreak;
         result.downStreak = downStreak;
         result.emergencyStreak = emergencyStreak;
-        result.reasonCode = closeVol == 0 ? REASON_NO_SWAPS : REASON_NO_CHANGE;
+        result.reasonCode = periodVolume == 0 ? REASON_NO_SWAPS : REASON_NO_CHANGE;
         if (bootstrapV2) {
             result.decisionBits |= TRACE_FLAG_BOOTSTRAP_V2;
         }
@@ -1765,7 +1765,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             }
         }
 
-        if (closeVol < _config.lowVolumeReset) {
+        if (periodVolume < _config.lowVolumeReset) {
             result.emergencyStreak = _incrementStreak(result.emergencyStreak, MAX_EMERGENCY_STREAK);
         } else {
             result.emergencyStreak = 0;
@@ -1782,7 +1782,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         }
 
         uint256 ratioPct =
-            emaVolScaled == 0 ? 0 : (uint256(closeVol) * EMA_SCALE * 100) / uint256(emaVolScaled);
+            emaVolScaled == 0 ? 0 : (uint256(periodVolume) * EMA_SCALE * 100) / uint256(emaVolScaled);
 
         if (result.feeIdx == MODE_FLOOR) {
             uint256 cashThreshold = uint256(_config.enterCashEmaRatioPct);
@@ -1793,7 +1793,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             bool canJumpCash =
                 !bootstrapV2
                     && emaVolScaled != 0
-                    && closeVol >= _config.enterCashMinVolume
+                    && periodVolume >= _config.enterCashMinVolume
                     && cashEnterTriggered;
             if (canJumpCash && result.feeIdx != MODE_CASH) {
                 result.feeIdx = MODE_CASH;
@@ -1809,7 +1809,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (result.feeIdx == MODE_CASH) {
             uint256 extremeThreshold = uint256(_config.enterExtremeEmaRatioPct);
             bool extremeEnterTriggered =
-                closeVol >= _config.enterExtremeMinVolume && ratioPct >= extremeThreshold;
+                periodVolume >= _config.enterExtremeMinVolume && ratioPct >= extremeThreshold;
             if (extremeEnterTriggered) {
                 result.decisionBits |= TRACE_FLAG_EXTREME_ENTER_TRIGGER;
             }
@@ -1894,7 +1894,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     // -----------------------------------------------------------------------
 
     function _packState(
-        uint64 periodVol,
+        uint64 periodVolume,
         uint96 emaVolScaled,
         uint64 periodStart,
         uint8 feeIdx,
@@ -1904,7 +1904,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 downStreak,
         uint8 emergencyStreak
     ) internal pure returns (uint256 packed) {
-        packed = uint256(periodVol);
+        packed = uint256(periodVolume);
         packed |= uint256(emaVolScaled) << 64;
         packed |= uint256(periodStart) << 160;
         packed |= uint256(feeIdx) << 224;
@@ -1920,7 +1920,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         internal
         pure
         returns (
-            uint64 periodVol,
+            uint64 periodVolume,
             uint96 emaVolScaled,
             uint64 periodStart,
             uint8 feeIdx,
@@ -1931,7 +1931,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             uint8 emergencyStreak
         )
     {
-        periodVol = uint64(packed);
+        periodVolume = uint64(packed);
         emaVolScaled = uint96(packed >> 64);
         periodStart = uint64(packed >> 160);
         feeIdx = uint8(packed >> 224);
