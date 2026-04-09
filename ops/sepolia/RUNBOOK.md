@@ -137,7 +137,7 @@ Controller safety note:
 - `lowVolumeReset` must remain strictly greater than zero.
 - `lowVolumeReset` must remain strictly less than `enterCashMinVolume`.
 - Hold semantics are `N -> N - 1`; production guidance is `holdCashPeriods >= 2`, `holdExtremePeriods >= 2` (recommended `3..4`).
-- Non-local deploy/preflight paths block weak hold configs by default; explicit override: `ALLOW_WEAK_HOLD_PERIODS=1`.
+- Non-local deploy/preflight paths block weak hold configs by default; explicit override: `ALLOW_WEAK_HOLD_PERIODS=true`.
 
 ## Monitoring and response
 

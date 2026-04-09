@@ -12,6 +12,7 @@ import {HookValidationLib} from "../lib/HookValidationLib.sol";
 import {NativeRecipientValidationLib} from "../lib/NativeRecipientValidationLib.sol";
 import {JsonReportLib} from "../lib/JsonReportLib.sol";
 import {LoggingLib} from "../lib/LoggingLib.sol";
+import {EnvLib} from "../lib/EnvLib.sol";
 import {OpsTypes} from "../types/OpsTypes.sol";
 import {LiveOpsBase} from "./LiveOpsBase.s.sol";
 
@@ -82,7 +83,7 @@ contract EnsureHookLive is LiveOpsBase {
         uint64 enterExtremeMinVolume = deployCfg.enterExtremeMinVolume;
         uint8 holdExtremePeriods = deployCfg.holdExtremePeriods;
         uint64 lowVolumeReset = deployCfg.lowVolumeReset;
-        bool allowWeakHoldPeriods = vm.envOr("ALLOW_WEAK_HOLD_PERIODS", false);
+        bool allowWeakHoldPeriods = EnvLib.envOrBool("ALLOW_WEAK_HOLD_PERIODS", false);
         require(
             lowVolumeReset > 0 && lowVolumeReset < enterCashMinVolume,
             "invalid emergency floor threshold"

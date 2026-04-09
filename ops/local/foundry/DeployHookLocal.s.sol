@@ -13,6 +13,7 @@ import {HookIdentityLib} from "../../shared/lib/HookIdentityLib.sol";
 import {HookValidationLib} from "../../shared/lib/HookValidationLib.sol";
 import {NativeRecipientValidationLib} from "../../shared/lib/NativeRecipientValidationLib.sol";
 import {JsonReportLib} from "../../shared/lib/JsonReportLib.sol";
+import {EnvLib} from "../../shared/lib/EnvLib.sol";
 import {OpsTypes} from "../../shared/types/OpsTypes.sol";
 
 contract DeployHookLocal is Script {
@@ -79,7 +80,7 @@ contract DeployHookLocal is Script {
         uint64 enterExtremeMinVolume = deployCfg.enterExtremeMinVolume;
         uint8 holdExtremePeriods = deployCfg.holdExtremePeriods;
         uint64 lowVolumeReset = deployCfg.lowVolumeReset;
-        bool allowWeakHoldPeriods = vm.envOr("ALLOW_WEAK_HOLD_PERIODS", false);
+        bool allowWeakHoldPeriods = EnvLib.envOrBool("ALLOW_WEAK_HOLD_PERIODS", false);
         require(
             lowVolumeReset > 0 && lowVolumeReset < enterCashMinVolume,
             "invalid emergency floor threshold"

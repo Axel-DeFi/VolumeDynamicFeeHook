@@ -153,7 +153,7 @@ Controller constraint notes:
 - `OPS_BROADCAST` (`0|1`)
 - `OPS_FORCE_SIMULATION` (`0|1`)
 - `OPS_NETWORK` (normally set by wrappers; `sepolia` or `optimism` for shared live paths)
-- `ALLOW_WEAK_HOLD_PERIODS` (`0|1`, default `0`; explicit override for non-local weak hold configs)
+- `ALLOW_WEAK_HOLD_PERIODS` (`true|false`, default `false`; explicit override for non-local weak hold configs)
 - `SMOKE_SWAP_STABLE_RAW`
 - `FULL_SWAP_STABLE_RAW`
 - `FULL_SWAP_ITERATIONS`

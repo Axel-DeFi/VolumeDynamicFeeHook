@@ -13,6 +13,7 @@ import {NativeRecipientValidationLib} from "../lib/NativeRecipientValidationLib.
 import {PoolStateLib} from "../lib/PoolStateLib.sol";
 import {JsonReportLib} from "../lib/JsonReportLib.sol";
 import {LoggingLib} from "../lib/LoggingLib.sol";
+import {EnvLib} from "../lib/EnvLib.sol";
 import {OpsTypes} from "../types/OpsTypes.sol";
 import {LiveOpsBase} from "./LiveOpsBase.s.sol";
 
@@ -101,10 +102,11 @@ contract PreflightLive is LiveOpsBase {
                     || lowVolumeReset >= enterCashMinVolume
             ) {
                 hookValidation.ok = false;
-                hookValidation.reason = "invalid emergency floor relation (require 0 < emergency < minCloseToCash)";
+                hookValidation.reason =
+                    "invalid emergency floor relation (require 0 < lowVolumeReset < enterCashMinVolume)";
             }
 
-            bool allowWeakHoldPeriods = vm.envOr("ALLOW_WEAK_HOLD_PERIODS", false);
+            bool allowWeakHoldPeriods = EnvLib.envOrBool("ALLOW_WEAK_HOLD_PERIODS", false);
             if (
                 hookValidation.ok
                     && (holdCashPeriods < 2 || holdExtremePeriods < 2)

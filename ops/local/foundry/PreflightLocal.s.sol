@@ -15,6 +15,7 @@ import {NativeRecipientValidationLib} from "../../shared/lib/NativeRecipientVali
 import {PoolStateLib} from "../../shared/lib/PoolStateLib.sol";
 import {JsonReportLib} from "../../shared/lib/JsonReportLib.sol";
 import {LoggingLib} from "../../shared/lib/LoggingLib.sol";
+import {EnvLib} from "../../shared/lib/EnvLib.sol";
 import {OpsTypes} from "../../shared/types/OpsTypes.sol";
 
 contract PreflightLocal is Script {
@@ -122,10 +123,11 @@ contract PreflightLocal is Script {
                     || lowVolumeReset >= enterCashMinVolume
             ) {
                 hookValidation.ok = false;
-                hookValidation.reason = "invalid emergency floor relation (require 0 < emergency < minCloseToCash)";
+                hookValidation.reason =
+                    "invalid emergency floor relation (require 0 < lowVolumeReset < enterCashMinVolume)";
             }
 
-            bool allowWeakHoldPeriods = vm.envOr("ALLOW_WEAK_HOLD_PERIODS", false);
+            bool allowWeakHoldPeriods = EnvLib.envOrBool("ALLOW_WEAK_HOLD_PERIODS", false);
             if (
                 hookValidation.ok
                     && (holdCashPeriods < 2 || holdExtremePeriods < 2)
