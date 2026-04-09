@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 library GasMeasurementLib {
-    uint256 internal constant BPS_SCALE = 10_000;
     uint256 internal constant EMA_SCALE = 1_000_000;
 
     enum Operation {
@@ -22,7 +21,7 @@ library GasMeasurementLib {
 
     error UnsupportedGasOperation(string operation);
     error InvalidStableDecimals(uint8 stableDecimals);
-    error InvalidPassThreshold(uint16 passThresholdBps);
+    error InvalidPassThreshold(uint16 passThresholdPct);
     error DownPassVolumeUnavailable(uint64 minRequiredUsd6, uint64 maxPassUsd6);
 
     function parseOperation(string memory raw) internal pure returns (Operation op) {
@@ -80,20 +79,20 @@ library GasMeasurementLib {
     function minUpPassCloseVolUsd6(
         uint96 emaBeforeScaled,
         uint8 emaPeriods,
-        uint16 passThresholdBps,
+        uint16 passThresholdPct,
         uint64 minCloseVolUsd6
     ) internal pure returns (uint64 closeVolUsd6) {
-        if (uint256(passThresholdBps) >= uint256(emaPeriods) * BPS_SCALE) {
-            revert InvalidPassThreshold(passThresholdBps);
+        if (uint256(passThresholdPct) >= uint256(emaPeriods) * 100) {
+            revert InvalidPassThreshold(passThresholdPct);
         }
 
         if (emaBeforeScaled == 0) {
             return minCloseVolUsd6;
         }
 
-        uint256 denominator = uint256(emaPeriods) * BPS_SCALE - uint256(passThresholdBps);
+        uint256 denominator = uint256(emaPeriods) * 100 - uint256(passThresholdPct);
         uint256 numerator =
-            uint256(passThresholdBps) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1);
+            uint256(passThresholdPct) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1);
         uint256 raw = numerator / (denominator * EMA_SCALE);
         if (numerator % (denominator * EMA_SCALE) != 0) {
             raw += 1;
@@ -110,21 +109,21 @@ library GasMeasurementLib {
         closeVolUsd6 = uint64(raw);
     }
 
-    function maxDownPassCloseVolUsd6(uint96 emaBeforeScaled, uint8 emaPeriods, uint16 passThresholdBps)
+    function maxDownPassCloseVolUsd6(uint96 emaBeforeScaled, uint8 emaPeriods, uint16 passThresholdPct)
         internal
         pure
         returns (uint64 closeVolUsd6)
     {
-        if (uint256(passThresholdBps) >= uint256(emaPeriods) * BPS_SCALE) {
-            revert InvalidPassThreshold(passThresholdBps);
+        if (uint256(passThresholdPct) >= uint256(emaPeriods) * 100) {
+            revert InvalidPassThreshold(passThresholdPct);
         }
         if (emaBeforeScaled == 0) {
             return 0;
         }
 
-        uint256 denominator = uint256(emaPeriods) * BPS_SCALE - uint256(passThresholdBps);
+        uint256 denominator = uint256(emaPeriods) * 100 - uint256(passThresholdPct);
         uint256 raw =
-            (uint256(passThresholdBps) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1))
+            (uint256(passThresholdPct) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1))
                 / (denominator * EMA_SCALE);
         if (raw > type(uint64).max) {
             raw = type(uint64).max;
@@ -135,7 +134,7 @@ library GasMeasurementLib {
     function chooseDownPassCloseVolUsd6(
         uint96 emaBeforeScaled,
         uint8 emaPeriods,
-        uint16 passThresholdBps,
+        uint16 passThresholdPct,
         uint64 dustSwapThreshold,
         uint64 lowVolumeReset
     ) internal pure returns (uint64 closeVolUsd6) {
@@ -146,7 +145,7 @@ library GasMeasurementLib {
             }
         }
 
-        uint64 maxPass = maxDownPassCloseVolUsd6(emaBeforeScaled, emaPeriods, passThresholdBps);
+        uint64 maxPass = maxDownPassCloseVolUsd6(emaBeforeScaled, emaPeriods, passThresholdPct);
         if (maxPass < floorRequired) {
             revert DownPassVolumeUnavailable(floorRequired, maxPass);
         }

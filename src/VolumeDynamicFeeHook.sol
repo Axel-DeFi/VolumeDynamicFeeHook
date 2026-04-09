@@ -26,9 +26,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Fixed-point scale used by Uniswap LP fee tiers (1e6 = 100%).
     uint256 private constant FEE_SCALE = 1_000_000;
 
-    /// @notice Basis-point scale used for percentage math.
-    uint256 private constant BPS_SCALE = 10_000;
-
     /// @notice Scaler used for EMA precision. Stored EMA units are USD6 * EMA_SCALE.
     uint256 private constant EMA_SCALE = 1_000_000;
 
@@ -355,10 +352,10 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     error ClaimTooLarge();
     error EthTransferFailed();
     error EthReceiveRejected();
-    error HookFeePercentLimitExceeded(uint16 requestedPercent, uint16 maxAllowedPercent);
-    error PendingHookFeePercentChangeExists();
-    error NoPendingHookFeePercentChange();
-    error HookFeePercentChangeNotReady(uint64 executeAfter);
+    error HookFeeLimitExceeded(uint16 requestedPercent, uint16 maxAllowedPercent);
+    error PendingHookFeeChangeExists();
+    error NoPendingHookFeeChange();
+    error HookFeeChangeNotReady(uint64 executeAfter);
 
     error InvalidDustSwapThreshold();
     error PendingDustSwapThresholdChangeExists();
@@ -375,9 +372,9 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     address private _owner;
     address private _pendingOwner;
 
-    bool private _hasPendingHookFeePercentChange;
+    bool private _hasPendingHookFeeChange;
     uint16 private _pendingHookFeePercent;
-    uint64 private _pendingHookFeePercentExecuteAfter;
+    uint64 private _pendingHookFeeExecuteAfter;
 
     bool private _hasPendingDustSwapThresholdChange;
     uint64 private _pendingDustSwapThreshold;
@@ -431,19 +428,19 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @param ownerAddr Initial owner address.
     /// @param hookFeePercent_ Initial hook fee percent used by the hook settlement formula.
     /// @param _enterCashMinVolume Minimum close volume for floor->cash transition.
-    /// @param _enterCashEmaRatioPct Close-volume trigger for floor->cash transition, as `closeVol / EMA` in bps.
+    /// @param _enterCashEmaRatioPct Close-volume trigger for floor->cash transition, as `closeVol / EMA` in percent.
     /// @param _holdCashPeriods Configured cash hold length `N`. Hold blocks only the ordinary cash->floor path, emergency
     /// still counts, effective fully protected periods are `N - 1`, and the earliest ordinary cash->floor close under
     /// uninterrupted weakness is `holdCashPeriods + exitCashConfirmPeriods - 1`.
     /// @param _enterExtremeMinVolume Minimum close volume for cash->extreme transition.
-    /// @param _enterExtremeEmaRatioPct Close-volume trigger for cash->extreme transition, as `closeVol / EMA` in bps.
+    /// @param _enterExtremeEmaRatioPct Close-volume trigger for cash->extreme transition, as `closeVol / EMA` in percent.
     /// @param _enterExtremeConfirmPeriods Confirmation periods for cash->extreme transition.
     /// @param _holdExtremePeriods Hold periods after entering extreme. Hold blocks only the ordinary extreme->cash path,
     /// emergency still counts, and the earliest ordinary extreme->cash close under uninterrupted weakness is
     /// `holdExtremePeriods + exitExtremeConfirmPeriods - 1`.
-    /// @param _exitExtremeEmaRatioPct Close-volume trigger ceiling for extreme->cash transition, as `closeVol / EMA` in bps.
+    /// @param _exitExtremeEmaRatioPct Close-volume trigger ceiling for extreme->cash transition, as `closeVol / EMA` in percent.
     /// @param _exitExtremeConfirmPeriods Confirmation periods for extreme->cash transition.
-    /// @param _exitCashEmaRatioPct Close-volume trigger ceiling for cash->floor transition, as `closeVol / EMA` in bps.
+    /// @param _exitCashEmaRatioPct Close-volume trigger ceiling for cash->floor transition, as `closeVol / EMA` in percent.
     /// @param _exitCashConfirmPeriods Confirmation periods for cash->floor transition.
     /// @param _lowVolumeReset Emergency floor trigger threshold (`> 0` and strictly below `_enterCashMinVolume`).
     /// @param _lowVolumeResetPeriods Consecutive confirmations for emergency floor trigger. The earliest
@@ -969,12 +966,12 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Returns pending HookFee percent timelock data.
-    function pendingHookFeePercentChange()
+    function pendingHookFeeChange()
         external
         view
         returns (bool exists, uint16 nextValue, uint64 executeAfter)
     {
-        return (_hasPendingHookFeePercentChange, _pendingHookFeePercent, _pendingHookFeePercentExecuteAfter);
+        return (_hasPendingHookFeeChange, _pendingHookFeePercent, _pendingHookFeeExecuteAfter);
     }
 
     /// @notice Returns pending dust-swap threshold update.
@@ -1090,43 +1087,43 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Schedules HookFee percent change through 48h timelock.
-    function scheduleHookFeePercentChange(uint16 newHookFeePercent) external onlyOwner {
-        if (_hasPendingHookFeePercentChange) revert PendingHookFeePercentChangeExists();
+    function scheduleHookFeeChange(uint16 newHookFeePercent) external onlyOwner {
+        if (_hasPendingHookFeeChange) revert PendingHookFeeChangeExists();
         _validateHookFeePercent(newHookFeePercent);
 
         uint64 executeAfter = _now64() + HOOK_FEE_PERCENT_CHANGE_DELAY;
-        _hasPendingHookFeePercentChange = true;
+        _hasPendingHookFeeChange = true;
         _pendingHookFeePercent = newHookFeePercent;
-        _pendingHookFeePercentExecuteAfter = executeAfter;
+        _pendingHookFeeExecuteAfter = executeAfter;
 
         emit HookFeeChangeScheduled(newHookFeePercent, executeAfter);
     }
 
     /// @notice Cancels scheduled HookFee percent change.
-    function cancelHookFeePercentChange() external onlyOwner {
-        if (!_hasPendingHookFeePercentChange) revert NoPendingHookFeePercentChange();
+    function cancelHookFeeChange() external onlyOwner {
+        if (!_hasPendingHookFeeChange) revert NoPendingHookFeeChange();
 
         uint16 cancelled = _pendingHookFeePercent;
-        _hasPendingHookFeePercentChange = false;
+        _hasPendingHookFeeChange = false;
         _pendingHookFeePercent = 0;
-        _pendingHookFeePercentExecuteAfter = 0;
+        _pendingHookFeeExecuteAfter = 0;
 
         emit HookFeeChangeCancelled(cancelled);
     }
 
     /// @notice Executes scheduled HookFee percent change after timelock delay.
-    function executeHookFeePercentChange() external onlyOwner {
-        if (!_hasPendingHookFeePercentChange) revert NoPendingHookFeePercentChange();
+    function executeHookFeeChange() external onlyOwner {
+        if (!_hasPendingHookFeeChange) revert NoPendingHookFeeChange();
 
-        uint64 executeAfter = _pendingHookFeePercentExecuteAfter;
-        if (_now64() < executeAfter) revert HookFeePercentChangeNotReady(executeAfter);
+        uint64 executeAfter = _pendingHookFeeExecuteAfter;
+        if (_now64() < executeAfter) revert HookFeeChangeNotReady(executeAfter);
 
         uint16 oldValue = _config.hookFeePercent;
         uint16 newValue = _pendingHookFeePercent;
 
-        _hasPendingHookFeePercentChange = false;
+        _hasPendingHookFeeChange = false;
         _pendingHookFeePercent = 0;
-        _pendingHookFeePercentExecuteAfter = 0;
+        _pendingHookFeeExecuteAfter = 0;
 
         _setHookFeePercentInternal(newValue);
         emit HookFeeChanged(oldValue, newValue);
@@ -1395,7 +1392,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
     function _validateHookFeePercent(uint16 newHookFeePercent) internal pure {
         if (newHookFeePercent > MAX_HOOK_FEE_PERCENT) {
-            revert HookFeePercentLimitExceeded(newHookFeePercent, MAX_HOOK_FEE_PERCENT);
+            revert HookFeeLimitExceeded(newHookFeePercent, MAX_HOOK_FEE_PERCENT);
         }
     }
 
@@ -1837,12 +1834,12 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             return result;
         }
 
-        uint256 rBps =
-            emaVolScaled == 0 ? 0 : (uint256(closeVol) * EMA_SCALE * BPS_SCALE) / uint256(emaVolScaled);
+        uint256 ratioPct =
+            emaVolScaled == 0 ? 0 : (uint256(closeVol) * EMA_SCALE * 100) / uint256(emaVolScaled);
 
         if (result.feeIdx == MODE_FLOOR) {
             uint256 cashThreshold = uint256(_config.enterCashEmaRatioPct);
-            bool cashEnterTriggered = rBps >= cashThreshold;
+            bool cashEnterTriggered = ratioPct >= cashThreshold;
             if (cashEnterTriggered) {
                 result.decisionBits |= TRACE_FLAG_CASH_ENTER_TRIGGER;
             }
@@ -1865,7 +1862,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         if (result.feeIdx == MODE_CASH) {
             uint256 extremeThreshold = uint256(_config.enterExtremeEmaRatioPct);
             bool extremeEnterTriggered =
-                closeVol >= _config.enterExtremeMinVolume && rBps >= extremeThreshold;
+                closeVol >= _config.enterExtremeMinVolume && ratioPct >= extremeThreshold;
             if (extremeEnterTriggered) {
                 result.decisionBits |= TRACE_FLAG_EXTREME_ENTER_TRIGGER;
             }
@@ -1891,11 +1888,11 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         }
 
         if (result.feeIdx == MODE_EXTREME) {
-            if (rBps <= uint256(_config.exitExtremeEmaRatioPct)) {
+            if (ratioPct <= uint256(_config.exitExtremeEmaRatioPct)) {
                 result.decisionBits |= TRACE_FLAG_EXTREME_EXIT_TRIGGER;
             }
         } else if (result.feeIdx == MODE_CASH) {
-            if (rBps <= uint256(_config.exitCashEmaRatioPct)) {
+            if (ratioPct <= uint256(_config.exitCashEmaRatioPct)) {
                 result.decisionBits |= TRACE_FLAG_CASH_EXIT_TRIGGER;
             }
         }
@@ -1907,7 +1904,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         }
 
         if (result.feeIdx == MODE_EXTREME) {
-            bool downExtremePass = rBps <= uint256(_config.exitExtremeEmaRatioPct);
+            bool downExtremePass = ratioPct <= uint256(_config.exitExtremeEmaRatioPct);
             if (downExtremePass) {
                 result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
             } else {
@@ -1922,7 +1919,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
                 }
             }
         } else if (result.feeIdx == MODE_CASH) {
-            bool downCashPass = rBps <= uint256(_config.exitCashEmaRatioPct);
+            bool downCashPass = ratioPct <= uint256(_config.exitCashEmaRatioPct);
             if (downCashPass) {
                 result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
             } else {

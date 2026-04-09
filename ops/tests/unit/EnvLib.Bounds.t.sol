@@ -19,8 +19,8 @@ contract EnvLibBoundsHarness {
         return EnvLib.requireBpsFromPercent(key);
     }
 
-    function requireBpsFromMultiplierX(string memory key) external view returns (uint16) {
-        return EnvLib.requireBpsFromMultiplierX(key);
+    function requirePctFromMultiplierX(string memory key) external view returns (uint16) {
+        return EnvLib.requirePctFromMultiplierX(key);
     }
 
     function requireUsd6FromUsd(string memory key) external view returns (uint64) {
@@ -97,9 +97,9 @@ contract EnvLibBoundsTest is Test {
         assertEq(harness.requireAddress("TEST_ADDRESS_OK", false), address(0x1234));
     }
 
-    function test_require_bps_from_multiplier_x_parses_decimal_multiple() public {
-        vm.setEnv("TEST_FLOOR_TO_CASH_MIN_FLOW_EMA_X", "1.8525");
-        assertEq(harness.requireBpsFromMultiplierX("TEST_FLOOR_TO_CASH_MIN_FLOW_EMA_X"), 18_525);
+    function test_require_pct_from_multiplier_x_parses_decimal_multiple() public {
+        vm.setEnv("TEST_FLOOR_TO_CASH_MIN_FLOW_EMA_X", "1.85");
+        assertEq(harness.requirePctFromMultiplierX("TEST_FLOOR_TO_CASH_MIN_FLOW_EMA_X"), 185);
     }
 
     function test_require_usd6_from_usd_parses_decimal_dollars() public {

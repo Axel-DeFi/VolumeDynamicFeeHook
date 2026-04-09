@@ -12,23 +12,23 @@ contract GasMeasurementLibTest is Test {
 
     function test_minUpPassCloseVolUsd6_returns_volume_above_minimum() public pure {
         uint96 emaBeforeScaled = uint96(1_000_000_000 * 1_000_000);
-        uint64 closeVol = GasMeasurementLib.minUpPassCloseVolUsd6(emaBeforeScaled, 8, 18_500, 1_000_000_000);
+        uint64 closeVol = GasMeasurementLib.minUpPassCloseVolUsd6(emaBeforeScaled, 8, 185, 1_000_000_000);
         uint96 emaAfterScaled = GasMeasurementLib.updateEmaScaled(emaBeforeScaled, closeVol, 8);
-        uint256 rBps = (uint256(closeVol) * 1_000_000 * 10_000) / uint256(emaAfterScaled);
+        uint256 ratioPct = (uint256(closeVol) * 1_000_000 * 100) / uint256(emaAfterScaled);
 
         assertGe(closeVol, 1_000_000_000);
-        assertGe(rBps, 18_500);
+        assertGe(ratioPct, 185);
     }
 
     function test_chooseDownPassCloseVolUsd6_stays_above_emergency_floor_and_below_threshold() public pure {
         uint96 emaBeforeScaled = uint96(4_200_000_000 * 1_000_000);
-        uint64 closeVol = GasMeasurementLib.chooseDownPassCloseVolUsd6(emaBeforeScaled, 8, 12_500, 4_000_000, 600_000_000);
+        uint64 closeVol = GasMeasurementLib.chooseDownPassCloseVolUsd6(emaBeforeScaled, 8, 125, 4_000_000, 600_000_000);
         uint96 emaAfterScaled = GasMeasurementLib.updateEmaScaled(emaBeforeScaled, closeVol, 8);
-        uint256 rBps = (uint256(closeVol) * 1_000_000 * 10_000) / uint256(emaAfterScaled);
+        uint256 ratioPct = (uint256(closeVol) * 1_000_000 * 100) / uint256(emaAfterScaled);
 
         assertGt(closeVol, 600_000_000);
         assertGe(closeVol, 4_000_000);
-        assertLe(rBps, 12_500);
+        assertLe(ratioPct, 125);
     }
 
     function test_usd6ToStableRaw_supports_18_decimals() public pure {

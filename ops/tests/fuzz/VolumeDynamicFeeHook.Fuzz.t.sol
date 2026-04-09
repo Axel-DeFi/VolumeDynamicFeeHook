@@ -215,9 +215,9 @@ contract VolumeDynamicFeeHookFuzzTest is Test, VolumeDynamicFeeHookV2DeployHelpe
         Scenario storage s = _pick(uint256(keccak256(abi.encodePacked(targetPercent, warpForward))));
 
         targetPercent = uint16(bound(targetPercent, 0, 10));
-        s.hook.scheduleHookFeePercentChange(targetPercent);
+        s.hook.scheduleHookFeeChange(targetPercent);
 
-        (bool exists, uint16 nextValue, uint64 executeAfter) = s.hook.pendingHookFeePercentChange();
+        (bool exists, uint16 nextValue, uint64 executeAfter) = s.hook.pendingHookFeeChange();
         assertTrue(exists);
         assertEq(nextValue, targetPercent);
         assertEq(executeAfter, uint64(block.timestamp) + 48 hours);
@@ -227,14 +227,14 @@ contract VolumeDynamicFeeHookFuzzTest is Test, VolumeDynamicFeeHookV2DeployHelpe
 
         if (jump < 48 hours) {
             vm.expectRevert();
-            s.hook.executeHookFeePercentChange();
-            s.hook.cancelHookFeePercentChange();
+            s.hook.executeHookFeeChange();
+            s.hook.cancelHookFeeChange();
         } else {
-            s.hook.executeHookFeePercentChange();
+            s.hook.executeHookFeeChange();
             assertEq(s.hook.hookFeePercent(), targetPercent);
         }
 
-        (exists,,) = s.hook.pendingHookFeePercentChange();
+        (exists,,) = s.hook.pendingHookFeeChange();
         assertFalse(exists);
     }
 }

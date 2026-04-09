@@ -133,7 +133,7 @@ library HookValidationLib {
             return validation;
         }
 
-        (bool hasPendingHookFeePercent,,) = hook.pendingHookFeePercentChange();
+        (bool hasPendingHookFeePercent,,) = hook.pendingHookFeeChange();
         if (hasPendingHookFeePercent) {
             validation.ok = false;
             validation.reason = "hook pending HookFee percent change exists";
@@ -185,7 +185,7 @@ interface IVolumeHook {
     function pendingOwner() external view returns (address);
     function hookFeePercent() external view returns (uint16);
     function dustSwapThreshold() external view returns (uint64);
-    function pendingHookFeePercentChange() external view returns (bool, uint16, uint64);
+    function pendingHookFeeChange() external view returns (bool, uint16, uint64);
     function pendingDustSwapThresholdChange() external view returns (bool, uint64);
     function floorFee() external view returns (uint24);
     function cashFee() external view returns (uint24);

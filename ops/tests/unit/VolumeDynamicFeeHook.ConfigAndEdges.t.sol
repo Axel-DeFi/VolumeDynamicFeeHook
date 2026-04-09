@@ -157,15 +157,15 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             cfg.owner,
             cfg.hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             V2_CASH_HOLD_PERIODS,
             V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
             cfg.lowVolumeReset,
             cfg.lowVolumeResetPeriods
@@ -212,15 +212,15 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
             cfg.owner,
             cfg.hookFeePercent,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             V2_CASH_HOLD_PERIODS,
             V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
             V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
             V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
@@ -319,7 +319,7 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                VolumeDynamicFeeHook.HookFeePercentLimitExceeded.selector, uint16(11), uint16(10)
+                VolumeDynamicFeeHook.HookFeeLimitExceeded.selector, uint16(11), uint16(10)
             )
         );
         _deploy(cfg);
@@ -371,11 +371,11 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
         assertEq(manager.takeCount(), takeCountBefore + 1, "claim payout must target new owner");
     }
 
-    function test_scheduleHookFeePercentChange_rejects_parallel_pending_update() public {
-        hook.scheduleHookFeePercentChange(4);
+    function test_scheduleHookFeeChange_rejects_parallel_pending_update() public {
+        hook.scheduleHookFeeChange(4);
 
-        vm.expectRevert(VolumeDynamicFeeHook.PendingHookFeePercentChangeExists.selector);
-        hook.scheduleHookFeePercentChange(5);
+        vm.expectRevert(VolumeDynamicFeeHook.PendingHookFeeChangeExists.selector);
+        hook.scheduleHookFeeChange(5);
     }
 
     function test_scheduleMinCountedSwapVolume_rejects_parallel_pending_update() public {

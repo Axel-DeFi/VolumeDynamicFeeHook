@@ -14,7 +14,6 @@ contract VolumeDynamicFeeHookHarness {
     // -----------------------------------------------------------------------
 
     uint256 private constant FEE_SCALE = 1_000_000;
-    uint256 private constant BPS_SCALE = 10_000;
     uint256 private constant EMA_SCALE = 1_000_000;
 
     uint8 private constant MAX_HOLD_PERIODS = 15;
@@ -187,13 +186,13 @@ contract VolumeDynamicFeeHookHarness {
             return result;
         }
 
-        uint256 rBps =
-            emaVolScaled == 0 ? 0 : (uint256(closeVol) * EMA_SCALE * BPS_SCALE) / uint256(emaVolScaled);
+        uint256 ratioPct =
+            emaVolScaled == 0 ? 0 : (uint256(closeVol) * EMA_SCALE * 100) / uint256(emaVolScaled);
 
         // FLOOR -> CASH
         if (result.feeIdx == MODE_FLOOR) {
             bool canJumpCash = !bootstrapV2 && emaVolScaled != 0
-                && closeVol >= cfg.enterCashMinVolume && rBps >= uint256(cfg.enterCashEmaRatioPct);
+                && closeVol >= cfg.enterCashMinVolume && ratioPct >= uint256(cfg.enterCashEmaRatioPct);
             if (canJumpCash && result.feeIdx != MODE_CASH) {
                 result.feeIdx = MODE_CASH;
                 result.holdRemaining = cfg.holdCashPeriods;
@@ -207,7 +206,7 @@ contract VolumeDynamicFeeHookHarness {
         // CASH -> EXTREME
         if (result.feeIdx == MODE_CASH) {
             bool extremeEnterTriggered =
-                closeVol >= cfg.enterExtremeMinVolume && rBps >= uint256(cfg.enterExtremeEmaRatioPct);
+                closeVol >= cfg.enterExtremeMinVolume && ratioPct >= uint256(cfg.enterExtremeEmaRatioPct);
             if (extremeEnterTriggered) {
                 result.upExtremeStreak = _incrementStreak(result.upExtremeStreak, MAX_UP_EXTREME_STREAK);
             } else {
@@ -236,7 +235,7 @@ contract VolumeDynamicFeeHookHarness {
 
         // EXTREME -> CASH
         if (result.feeIdx == MODE_EXTREME) {
-            bool downExtremePass = rBps <= uint256(cfg.exitExtremeEmaRatioPct);
+            bool downExtremePass = ratioPct <= uint256(cfg.exitExtremeEmaRatioPct);
             if (downExtremePass) {
                 result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
             } else {
@@ -250,7 +249,7 @@ contract VolumeDynamicFeeHookHarness {
                 }
             }
         } else if (result.feeIdx == MODE_CASH) {
-            bool downCashPass = rBps <= uint256(cfg.exitCashEmaRatioPct);
+            bool downCashPass = ratioPct <= uint256(cfg.exitCashEmaRatioPct);
             if (downCashPass) {
                 result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
             } else {
@@ -284,15 +283,15 @@ contract VolumeDynamicFeeHookCheckTest is Test {
             lowVolumeReset: 100 * 1e6,
             lowVolumeResetPeriods: 6,
             enterCashMinVolume: 400 * 1e6,
-            enterCashEmaRatioPct: 13_500,
+            enterCashEmaRatioPct: 135,
             holdCashPeriods: 2,
             enterExtremeMinVolume: 2_500 * 1e6,
-            enterExtremeEmaRatioPct: 41_000,
+            enterExtremeEmaRatioPct: 410,
             enterExtremeConfirmPeriods: 2,
             holdExtremePeriods: 2,
-            exitExtremeEmaRatioPct: 12_000,
+            exitExtremeEmaRatioPct: 120,
             exitExtremeConfirmPeriods: 2,
-            exitCashEmaRatioPct: 12_000,
+            exitCashEmaRatioPct: 120,
             exitCashConfirmPeriods: 3,
             emaPeriods: 8
         });

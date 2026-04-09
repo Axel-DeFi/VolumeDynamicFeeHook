@@ -12,6 +12,9 @@ evm_version = "cancun"
 bytecode_hash = "ipfs"
 gas_reports = ["VolumeDynamicFeeHook"]
 offline = true
+# HookMiner.find() searches up to 160_444 salts; with large bytecode each keccak256 is ~7K gas.
+# Worst-case: ~160_444 * 7_000 * 4 scenarios ≈ 4.5B gas in setUp. Set limit high enough.
+gas_limit = "18446744073709551615"
 
 broadcast = "broadcast"
 
@@ -42,6 +45,7 @@ gas_reports = ["VolumeDynamicFeeHook"]
 offline = true
 broadcast = "broadcast"
 auto_detect_remappings = false
+gas_limit = "18446744073709551615"
 fs_permissions = [
   { access = "read", path = "./" },
   { access = "read-write", path = "ops/local/out" },

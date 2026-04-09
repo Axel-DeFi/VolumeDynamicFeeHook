@@ -65,26 +65,26 @@ library ConfigLoader {
         cfg.enterCashMinVolume =
             _requireUint64Either("FLOOR_TO_CASH_MIN_CLOSE_VOLUME", "DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME");
         cfg.enterCashEmaRatioPct =
-            _requireBpsFromMultiplierXEither(
+            _requirePctFromMultiplierXEither(
                 "FLOOR_TO_CASH_MIN_FLOW_EMA_X", "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X"
             );
         cfg.holdCashPeriods = _requireUint8Either("CASH_HOLD_PERIODS", "DEPLOY_CASH_HOLD_PERIODS");
         cfg.enterExtremeMinVolume = _requireUint64Either(
             "CASH_TO_EXTREME_MIN_CLOSE_VOLUME", "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME"
         );
-        cfg.enterExtremeEmaRatioPct = _requireBpsFromMultiplierXEither(
+        cfg.enterExtremeEmaRatioPct = _requirePctFromMultiplierXEither(
             "CASH_TO_EXTREME_MIN_FLOW_EMA_X", "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X"
         );
         cfg.enterExtremeConfirmPeriods =
             _requireUint8Either("CASH_TO_EXTREME_CONFIRM_PERIODS", "DEPLOY_CASH_TO_EXTREME_CONFIRM_PERIODS");
         cfg.holdExtremePeriods = _requireUint8Either("EXTREME_HOLD_PERIODS", "DEPLOY_EXTREME_HOLD_PERIODS");
-        cfg.exitExtremeEmaRatioPct = _requireBpsFromMultiplierXEither(
+        cfg.exitExtremeEmaRatioPct = _requirePctFromMultiplierXEither(
             "EXTREME_TO_CASH_MAX_FLOW_EMA_X", "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X"
         );
         cfg.exitExtremeConfirmPeriods =
             _requireUint8Either("EXTREME_TO_CASH_CONFIRM_PERIODS", "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS");
         cfg.exitCashEmaRatioPct =
-            _requireBpsFromMultiplierXEither("CASH_TO_FLOOR_MAX_FLOW_EMA_X", "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X");
+            _requirePctFromMultiplierXEither("CASH_TO_FLOOR_MAX_FLOW_EMA_X", "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X");
         cfg.exitCashConfirmPeriods =
             _requireUint8Either("CASH_TO_FLOOR_CONFIRM_PERIODS", "DEPLOY_CASH_TO_FLOOR_CONFIRM_PERIODS");
         cfg.lowVolumeReset =
@@ -175,8 +175,8 @@ library ConfigLoader {
             ? EnvLib.requireUint64("DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME")
             : EnvLib.envOrUint64("DEPLOY_FLOOR_TO_CASH_MIN_CLOSE_VOLUME", runtimeCfg.enterCashMinVolume);
         cfg.enterCashEmaRatioPct = strict
-            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X")
-            : EnvLib.envOrBpsFromMultiplierX(
+            ? EnvLib.requirePctFromMultiplierX("DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X")
+            : EnvLib.envOrPctFromMultiplierX(
                     "DEPLOY_FLOOR_TO_CASH_MIN_FLOW_EMA_X", runtimeCfg.enterCashEmaRatioPct
                 );
         cfg.holdCashPeriods = strict
@@ -188,8 +188,8 @@ library ConfigLoader {
                 "DEPLOY_CASH_TO_EXTREME_MIN_CLOSE_VOLUME", runtimeCfg.enterExtremeMinVolume
             );
         cfg.enterExtremeEmaRatioPct = strict
-            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X")
-            : EnvLib.envOrBpsFromMultiplierX(
+            ? EnvLib.requirePctFromMultiplierX("DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X")
+            : EnvLib.envOrPctFromMultiplierX(
                 "DEPLOY_CASH_TO_EXTREME_MIN_FLOW_EMA_X", runtimeCfg.enterExtremeEmaRatioPct
             );
         cfg.enterExtremeConfirmPeriods = strict
@@ -201,8 +201,8 @@ library ConfigLoader {
             ? EnvLib.requireUint8("DEPLOY_EXTREME_HOLD_PERIODS")
             : EnvLib.envOrUint8("DEPLOY_EXTREME_HOLD_PERIODS", runtimeCfg.holdExtremePeriods);
         cfg.exitExtremeEmaRatioPct = strict
-            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X")
-            : EnvLib.envOrBpsFromMultiplierX(
+            ? EnvLib.requirePctFromMultiplierX("DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X")
+            : EnvLib.envOrPctFromMultiplierX(
                 "DEPLOY_EXTREME_TO_CASH_MAX_FLOW_EMA_X", runtimeCfg.exitExtremeEmaRatioPct
             );
         cfg.exitExtremeConfirmPeriods = strict
@@ -211,8 +211,8 @@ library ConfigLoader {
                 "DEPLOY_EXTREME_TO_CASH_CONFIRM_PERIODS", runtimeCfg.exitExtremeConfirmPeriods
             );
         cfg.exitCashEmaRatioPct = strict
-            ? EnvLib.requireBpsFromMultiplierX("DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X")
-            : EnvLib.envOrBpsFromMultiplierX(
+            ? EnvLib.requirePctFromMultiplierX("DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X")
+            : EnvLib.envOrPctFromMultiplierX(
                 "DEPLOY_CASH_TO_FLOOR_MAX_FLOW_EMA_X", runtimeCfg.exitCashEmaRatioPct
             );
         cfg.exitCashConfirmPeriods = strict
@@ -376,13 +376,13 @@ library ConfigLoader {
         revert ErrorLib.MissingEnv(key);
     }
 
-    function _requireBpsFromMultiplierXEither(string memory key, string memory fallbackKey)
+    function _requirePctFromMultiplierXEither(string memory key, string memory fallbackKey)
         private
         view
         returns (uint16)
     {
-        if (EnvLib.hasKey(key)) return EnvLib.requireBpsFromMultiplierX(key);
-        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requireBpsFromMultiplierX(fallbackKey);
+        if (EnvLib.hasKey(key)) return EnvLib.requirePctFromMultiplierX(key);
+        if (EnvLib.hasKey(fallbackKey)) return EnvLib.requirePctFromMultiplierX(fallbackKey);
         revert ErrorLib.MissingEnv(key);
     }
 

@@ -217,7 +217,7 @@ contract MeasureGasLive is LiveOpsBase {
         }
     }
 
-    function _chooseNextUpOpenPeriodUsd6(uint16 passThresholdBps, uint64 minCloseVolUsd6)
+    function _chooseNextUpOpenPeriodUsd6(uint16 passThresholdPct, uint64 minCloseVolUsd6)
         internal
         view
         returns (uint64 nextOpenUsd6)
@@ -225,17 +225,17 @@ contract MeasureGasLive is LiveOpsBase {
         (uint64 periodVol, uint96 emaScaled,,) = hook.unpackedState();
         uint96 emaAfterClose = GasMeasurementLib.updateEmaScaled(emaScaled, periodVol, hook.emaPeriods());
         nextOpenUsd6 = GasMeasurementLib.minUpPassCloseVolUsd6(
-            emaAfterClose, hook.emaPeriods(), passThresholdBps, minCloseVolUsd6
+            emaAfterClose, hook.emaPeriods(), passThresholdPct, minCloseVolUsd6
         );
     }
 
-    function _chooseNextDownOpenPeriodUsd6(uint16 passThresholdBps) internal view returns (uint64 nextOpenUsd6) {
+    function _chooseNextDownOpenPeriodUsd6(uint16 passThresholdPct) internal view returns (uint64 nextOpenUsd6) {
         (uint64 periodVol, uint96 emaScaled,,) = hook.unpackedState();
         uint96 emaAfterClose = GasMeasurementLib.updateEmaScaled(emaScaled, periodVol, hook.emaPeriods());
         nextOpenUsd6 = GasMeasurementLib.chooseDownPassCloseVolUsd6(
             emaAfterClose,
             hook.emaPeriods(),
-            passThresholdBps,
+            passThresholdPct,
             hook.dustSwapThreshold(),
             hook.lowVolumeReset()
         );

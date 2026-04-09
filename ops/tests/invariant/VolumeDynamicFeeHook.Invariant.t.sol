@@ -113,17 +113,17 @@ contract VolumeDynamicFeeHookHandler is Test {
         require(initialized, "not init");
 
         nextPercent = uint16(bound(nextPercent, 0, 10));
-        (bool exists,,) = hook.pendingHookFeePercentChange();
+        (bool exists,,) = hook.pendingHookFeeChange();
         if (exists) return;
-        hook.scheduleHookFeePercentChange(nextPercent);
+        hook.scheduleHookFeeChange(nextPercent);
     }
 
     function opCancelHookFee() external {
         require(initialized, "not init");
 
-        (bool exists,,) = hook.pendingHookFeePercentChange();
+        (bool exists,,) = hook.pendingHookFeeChange();
         if (!exists) return;
-        hook.cancelHookFeePercentChange();
+        hook.cancelHookFeeChange();
     }
 
     function opExecuteHookFee(uint32 warpBy) external {
@@ -132,13 +132,13 @@ contract VolumeDynamicFeeHookHandler is Test {
         uint256 step = bound(uint256(warpBy), 0, 3 days);
         vm.warp(block.timestamp + step);
 
-        (bool exists,, uint64 executeAfter) = hook.pendingHookFeePercentChange();
+        (bool exists,, uint64 executeAfter) = hook.pendingHookFeeChange();
         if (!exists) return;
 
         if (block.timestamp < executeAfter) {
             return;
         }
-        hook.executeHookFeePercentChange();
+        hook.executeHookFeeChange();
     }
 }
 
@@ -271,7 +271,7 @@ abstract contract VolumeDynamicFeeHookInvariantBase is
     }
 
     function invariant_pendingTimelockStateConsistent() public view {
-        (bool exists, uint16 nextValue, uint64 executeAfter) = hook.pendingHookFeePercentChange();
+        (bool exists, uint16 nextValue, uint64 executeAfter) = hook.pendingHookFeeChange();
         if (!exists) {
             assertEq(nextValue, 0, "stale pending value");
             assertEq(executeAfter, 0, "stale pending eta");

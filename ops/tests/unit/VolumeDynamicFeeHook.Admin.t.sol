@@ -296,15 +296,15 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             owner_,
             hookFeePercent_,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             V2_CASH_HOLD_PERIODS,
             V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
             V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
             V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
@@ -366,15 +366,15 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     {
         p = VolumeDynamicFeeHook.ControllerSettings({
             enterCashMinVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             holdCashPeriods: V2_CASH_HOLD_PERIODS,
             enterExtremeMinVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             enterExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             holdExtremePeriods: V2_EXTREME_HOLD_PERIODS,
-            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             exitExtremeConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             exitCashConfirmPeriods: V2_CASH_TO_FLOOR_CONFIRM_PERIODS
         });
     }
@@ -1047,9 +1047,9 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     }
 
     function test_hookFee_is_returned_via_afterSwap_delta_path() public {
-        hook.scheduleHookFeePercentChange(10);
+        hook.scheduleHookFeeChange(10);
         vm.warp(block.timestamp + 48 hours);
-        hook.executeHookFeePercentChange();
+        hook.executeHookFeeChange();
 
         // unspecified currency for exact-input zeroForOne is token1 (delta.amount1)
         _swap(true, -1, -1_000_000_000, 900_000_000);
@@ -1091,32 +1091,32 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     function test_hookFee_cap_enforced_at_10_percent() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                VolumeDynamicFeeHook.HookFeePercentLimitExceeded.selector, uint16(11), uint16(10)
+                VolumeDynamicFeeHook.HookFeeLimitExceeded.selector, uint16(11), uint16(10)
             )
         );
-        hook.scheduleHookFeePercentChange(11);
+        hook.scheduleHookFeeChange(11);
     }
 
     function test_timelock_schedule_cancel_execute() public {
-        hook.scheduleHookFeePercentChange(4);
+        hook.scheduleHookFeeChange(4);
 
-        (bool exists, uint16 nextValue, uint64 executeAfter) = hook.pendingHookFeePercentChange();
+        (bool exists, uint16 nextValue, uint64 executeAfter) = hook.pendingHookFeeChange();
         assertTrue(exists);
         assertEq(nextValue, 4);
         assertEq(executeAfter, uint64(block.timestamp) + 48 hours);
 
         vm.expectRevert(
-            abi.encodeWithSelector(VolumeDynamicFeeHook.HookFeePercentChangeNotReady.selector, executeAfter)
+            abi.encodeWithSelector(VolumeDynamicFeeHook.HookFeeChangeNotReady.selector, executeAfter)
         );
-        hook.executeHookFeePercentChange();
+        hook.executeHookFeeChange();
 
-        hook.cancelHookFeePercentChange();
-        (exists,,) = hook.pendingHookFeePercentChange();
+        hook.cancelHookFeeChange();
+        (exists,,) = hook.pendingHookFeeChange();
         assertFalse(exists);
 
-        hook.scheduleHookFeePercentChange(5);
+        hook.scheduleHookFeeChange(5);
         vm.warp(block.timestamp + 48 hours);
-        hook.executeHookFeePercentChange();
+        hook.executeHookFeeChange();
         assertEq(hook.hookFeePercent(), 5);
     }
 
@@ -1504,15 +1504,15 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         VolumeDynamicFeeHook.ControllerSettings memory p = VolumeDynamicFeeHook.ControllerSettings({
             enterCashMinVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             holdCashPeriods: 1,
             enterExtremeMinVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             enterExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             holdExtremePeriods: V2_EXTREME_HOLD_PERIODS,
-            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             exitExtremeConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             exitCashConfirmPeriods: 1
         });
         hook.setControllerSettings(p);
@@ -2091,15 +2091,15 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
         VolumeDynamicFeeHook.ControllerSettings memory p = VolumeDynamicFeeHook.ControllerSettings({
             enterCashMinVolume: V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME + 1,
-            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            enterCashEmaRatioPct: V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             holdCashPeriods: V2_CASH_HOLD_PERIODS,
             enterExtremeMinVolume: V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            enterExtremeEmaRatioPct: V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             enterExtremeConfirmPeriods: V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             holdExtremePeriods: V2_EXTREME_HOLD_PERIODS,
-            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            exitExtremeEmaRatioPct: V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             exitExtremeConfirmPeriods: V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            exitCashEmaRatioPct: V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             exitCashConfirmPeriods: V2_CASH_TO_FLOOR_CONFIRM_PERIODS
         });
         hook.setControllerSettings(p);

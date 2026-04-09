@@ -65,7 +65,7 @@ contract PermissionSurfaceHookMock {
         return 4_000_000;
     }
 
-    function pendingHookFeePercentChange() external pure returns (bool, uint16, uint64) {
+    function pendingHookFeeChange() external pure returns (bool, uint16, uint64) {
         return (false, 0, 0);
     }
 
@@ -102,7 +102,7 @@ contract PermissionSurfaceHookMock {
     }
 
     function enterCashEmaRatioPct() external pure returns (uint16) {
-        return 13_500;
+        return 135;
     }
 
     function holdCashPeriods() external pure returns (uint8) {
@@ -114,7 +114,7 @@ contract PermissionSurfaceHookMock {
     }
 
     function enterExtremeEmaRatioPct() external pure returns (uint16) {
-        return 41_000;
+        return 410;
     }
 
     function enterExtremeConfirmPeriods() external pure returns (uint8) {
@@ -126,7 +126,7 @@ contract PermissionSurfaceHookMock {
     }
 
     function exitExtremeEmaRatioPct() external pure returns (uint16) {
-        return 12_000;
+        return 120;
     }
 
     function exitExtremeConfirmPeriods() external pure returns (uint8) {
@@ -134,7 +134,7 @@ contract PermissionSurfaceHookMock {
     }
 
     function exitCashEmaRatioPct() external pure returns (uint16) {
-        return 12_000;
+        return 120;
     }
 
     function exitCashConfirmPeriods() external pure returns (uint8) {
@@ -304,7 +304,7 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
 
     function test_validateHook_rejects_pending_hookFee_percent_change() public {
         HookValidationHarness hook = _deploy(address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
-        hook.scheduleHookFeePercentChange(0);
+        hook.scheduleHookFeeChange(0);
 
         OpsTypes.CoreConfig memory cfg =
             _matchingCfg(address(hook), address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
@@ -411,15 +411,15 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
             owner_,
             hookFeePercent_,
             V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME,
-            V2_FLOOR_TO_CASH_MIN_FLOW_BPS,
+            V2_FLOOR_TO_CASH_MIN_FLOW_PCT,
             V2_CASH_HOLD_PERIODS,
             V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME,
-            V2_CASH_TO_EXTREME_MIN_FLOW_BPS,
+            V2_CASH_TO_EXTREME_MIN_FLOW_PCT,
             V2_CASH_TO_EXTREME_CONFIRM_PERIODS,
             V2_EXTREME_HOLD_PERIODS,
-            V2_EXTREME_TO_CASH_MAX_FLOW_BPS,
+            V2_EXTREME_TO_CASH_MAX_FLOW_PCT,
             V2_EXTREME_TO_CASH_CONFIRM_PERIODS,
-            V2_CASH_TO_FLOOR_MAX_FLOW_BPS,
+            V2_CASH_TO_FLOOR_MAX_FLOW_PCT,
             V2_CASH_TO_FLOOR_CONFIRM_PERIODS,
             V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME,
             V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS
@@ -456,15 +456,15 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
         cfg.hookFeePercent = hookFeePercent_;
         cfg.dustSwapThreshold = 4_000_000;
         cfg.enterCashMinVolume = V2_FLOOR_TO_CASH_MIN_CLOSE_VOLUME;
-        cfg.enterCashEmaRatioPct = V2_FLOOR_TO_CASH_MIN_FLOW_BPS;
+        cfg.enterCashEmaRatioPct = V2_FLOOR_TO_CASH_MIN_FLOW_PCT;
         cfg.holdCashPeriods = V2_CASH_HOLD_PERIODS;
         cfg.enterExtremeMinVolume = V2_CASH_TO_EXTREME_MIN_CLOSE_VOLUME;
-        cfg.enterExtremeEmaRatioPct = V2_CASH_TO_EXTREME_MIN_FLOW_BPS;
+        cfg.enterExtremeEmaRatioPct = V2_CASH_TO_EXTREME_MIN_FLOW_PCT;
         cfg.enterExtremeConfirmPeriods = V2_CASH_TO_EXTREME_CONFIRM_PERIODS;
         cfg.holdExtremePeriods = V2_EXTREME_HOLD_PERIODS;
-        cfg.exitExtremeEmaRatioPct = V2_EXTREME_TO_CASH_MAX_FLOW_BPS;
+        cfg.exitExtremeEmaRatioPct = V2_EXTREME_TO_CASH_MAX_FLOW_PCT;
         cfg.exitExtremeConfirmPeriods = V2_EXTREME_TO_CASH_CONFIRM_PERIODS;
-        cfg.exitCashEmaRatioPct = V2_CASH_TO_FLOOR_MAX_FLOW_BPS;
+        cfg.exitCashEmaRatioPct = V2_CASH_TO_FLOOR_MAX_FLOW_PCT;
         cfg.exitCashConfirmPeriods = V2_CASH_TO_FLOOR_CONFIRM_PERIODS;
         cfg.lowVolumeReset = V2_EMERGENCY_TO_FLOOR_MAX_CLOSE_VOLUME;
         cfg.lowVolumeResetPeriods = V2_EMERGENCY_TO_FLOOR_CONFIRM_PERIODS;
