@@ -69,10 +69,6 @@ contract PermissionSurfaceHookMock {
         return (false, 0, 0);
     }
 
-    function pendingDustSwapThresholdChange() external pure returns (bool, uint64) {
-        return (false, 0);
-    }
-
     function floorFee() external pure returns (uint24) {
         return 400;
     }
@@ -311,17 +307,6 @@ contract HookValidationLibTest is Test, VolumeDynamicFeeHookV2DeployHelper {
         OpsTypes.HookValidation memory validation = HookValidationLib.validateHook(cfg);
         assertFalse(validation.ok);
         assertEq(validation.reason, "hook pending HookFee percent change exists");
-    }
-
-    function test_validateHook_rejects_pending_minCountedSwap_change() public {
-        HookValidationHarness hook = _deploy(address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
-        hook.scheduleDustSwapThresholdChange(1_500_000);
-
-        OpsTypes.CoreConfig memory cfg =
-            _matchingCfg(address(hook), address(this), 6, V2_INITIAL_HOOK_FEE_PERCENT);
-        OpsTypes.HookValidation memory validation = HookValidationLib.validateHook(cfg);
-        assertFalse(validation.ok);
-        assertEq(validation.reason, "hook pending min counted swap change exists");
     }
 
     function test_validateHook_rejects_extra_permission_surface() public {

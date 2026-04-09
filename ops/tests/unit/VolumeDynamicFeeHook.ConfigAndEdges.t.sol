@@ -373,35 +373,22 @@ contract VolumeDynamicFeeHookConfigAndEdgesTest is Test, VolumeDynamicFeeHookV2D
         hook.scheduleHookFeeChange(5);
     }
 
-    function test_scheduleMinCountedSwapVolume_rejects_parallel_pending_update() public {
-        hook.scheduleDustSwapThresholdChange(4_500_000);
-
-        vm.expectRevert(VolumeDynamicFeeHook.PendingDustSwapThresholdChangeExists.selector);
-        hook.scheduleDustSwapThresholdChange(5_000_000);
-    }
-
-    function test_scheduleMinCountedSwapVolume_reverts_below_min_bound() public {
+    function test_setDustSwapThreshold_reverts_below_min_bound() public {
         vm.expectRevert(VolumeDynamicFeeHook.InvalidDustSwapThreshold.selector);
-        hook.scheduleDustSwapThresholdChange(999_999);
+        hook.setDustSwapThreshold(999_999);
     }
 
-    function test_scheduleMinCountedSwapVolume_reverts_above_max_bound() public {
+    function test_setDustSwapThreshold_reverts_above_max_bound() public {
         vm.expectRevert(VolumeDynamicFeeHook.InvalidDustSwapThreshold.selector);
-        hook.scheduleDustSwapThresholdChange(10_000_001);
+        hook.setDustSwapThreshold(10_000_001);
     }
 
-    function test_scheduleMinCountedSwapVolume_accepts_range_bounds() public {
-        hook.scheduleDustSwapThresholdChange(1_000_000);
-        (bool exists, uint64 nextValue) = hook.pendingDustSwapThresholdChange();
-        assertTrue(exists);
-        assertEq(nextValue, 1_000_000);
+    function test_setDustSwapThreshold_accepts_range_bounds() public {
+        hook.setDustSwapThreshold(1_000_000);
+        assertEq(hook.dustSwapThreshold(), 1_000_000);
 
-        hook.cancelDustSwapThresholdChange();
-
-        hook.scheduleDustSwapThresholdChange(10_000_000);
-        (exists, nextValue) = hook.pendingDustSwapThresholdChange();
-        assertTrue(exists);
-        assertEq(nextValue, 10_000_000);
+        hook.setDustSwapThreshold(10_000_000);
+        assertEq(hook.dustSwapThreshold(), 10_000_000);
     }
 
     function test_default_dustSwapThreshold_is_4e6() public view {

@@ -1189,6 +1189,24 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(hook.pendingOwner(), address(0));
     }
 
+    function test_acceptOwner_clears_pending_hookFee_change() public {
+        hook.scheduleHookFeeChange(5);
+        (bool exists, uint16 nextValue, uint64 executeAfter) = hook.pendingHookFeeChange();
+        assertTrue(exists);
+        assertEq(nextValue, 5);
+        assertGt(executeAfter, uint64(block.timestamp));
+
+        hook.proposeNewOwner(nextOwner);
+        vm.prank(nextOwner);
+        hook.acceptOwner();
+
+        (exists, nextValue, executeAfter) = hook.pendingHookFeeChange();
+        assertFalse(exists);
+        assertEq(nextValue, 0);
+        assertEq(executeAfter, 0);
+        assertEq(hook.owner(), nextOwner);
+    }
+
     function test_owner_transfer_rejects_propose_current_owner() public {
         vm.expectRevert(VolumeDynamicFeeHook.InvalidOwner.selector);
         hook.proposeNewOwner(owner);
@@ -1975,7 +1993,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(extremeFee_, 9000);
     }
 
-    function test_dustSwapThreshold_filters_only_telemetry_and_applies_next_period() public {
+    function test_dustSwapThreshold_filters_only_telemetry_and_applies_immediately() public {
         assertEq(hook.dustSwapThreshold(), 4_000_000);
 
         _swap(true, -1, -1_000_000, 900_000);
@@ -1987,18 +2005,12 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         (periodVol,,,) = hook.unpackedState();
         assertEq(periodVol, 6_000_000);
 
-        hook.scheduleDustSwapThresholdChange(10_000_000);
-        _swap(true, -1, -6_000_000, 5_700_000);
-        (periodVol,,,) = hook.unpackedState();
-        assertEq(periodVol, 12_000_000, "new threshold must not apply mid-period");
-
-        vm.warp(block.timestamp + PERIOD_SECONDS);
-        _swap(true, -1, 0, 0);
+        hook.setDustSwapThreshold(10_000_000);
         assertEq(hook.dustSwapThreshold(), 10_000_000);
 
         _swap(true, -1, -6_000_000, 5_700_000);
         (periodVol,,,) = hook.unpackedState();
-        assertEq(periodVol, 0, "new threshold must apply after next period boundary");
+        assertEq(periodVol, 6_000_000, "new threshold must apply immediately and exclude sub-threshold swaps");
     }
 
     function test_period_close_catch_up_keeps_periodStart_aligned_and_not_future() public {
