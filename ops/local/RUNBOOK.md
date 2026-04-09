@@ -143,6 +143,6 @@ Controller safety note:
   `HookFeeChangeScheduled`, `HookFeeChangeCancelled`, `HookFeeChanged`, `HookFeesClaimed`.
 - Track config and safety events:
   `ModeFeesUpdated`, `ControllerSettingsUpdated`, `ModelUpdated`, `ResetSettingsUpdated`,
-  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `EmergencyResetToFloorApplied`,
-  `EmergencyResetToCashApplied`.
+  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `IdleReset`,
+  `EmergencyResetToFloorApplied`, `EmergencyResetToCashApplied`, `RescueTransfer`.
 - Treat wash-trading and fee-poisoning as residual economic risks in adversarial routing environments.

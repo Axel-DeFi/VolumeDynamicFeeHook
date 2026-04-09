@@ -367,8 +367,10 @@ Config / pause / emergency events:
 - `DustSwapThresholdChanged`
 - `Paused`
 - `Unpaused`
+- `IdleReset`
 - `EmergencyResetToFloorApplied`
 - `EmergencyResetToCashApplied`
+- `RescueTransfer`
 
 Monitoring interpretation note:
 - `downStreak` is context-dependent and must be interpreted together with current `feeIdx`.

@@ -33,7 +33,8 @@ Local operational validation lives under `ops/local` and is split into thin shel
 
 ## Notes
 
-- Config layering: `defaults.env` -> `scenarios/<name>.env` -> `.env` -> process env.
+- Config layering: `defaults.env` -> `scenarios/<name>.env` -> `.env` -> `deploy.env`.
+- `deploy.env` is the winning constructor snapshot for `DEPLOY_*`; runtime state hydration happens afterward and does not mutate canonical identity inputs.
 - State hydration: `ops/local/out/state/local.addresses.json` is reused by wrappers.
 - `bootstrap` preflight tolerates stale hook addresses and treats them as bootstrap replacements.
 - `OPS_FORCE_SIMULATION=1` runs scripts without RPC/broadcast for deterministic dry operational checks.

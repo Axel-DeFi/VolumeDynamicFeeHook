@@ -97,5 +97,5 @@ ops/optimism/scripts/emergency.sh
   `HookFeeChangeScheduled`, `HookFeeChangeCancelled`, `HookFeeChanged`, `HookFeesClaimed`.
 - Track config and safety events:
   `ModeFeesUpdated`, `ControllerSettingsUpdated`, `ModelUpdated`, `ResetSettingsUpdated`,
-  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `EmergencyResetToFloorApplied`,
-  `EmergencyResetToCashApplied`.
+  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `IdleReset`,
+  `EmergencyResetToFloorApplied`, `EmergencyResetToCashApplied`, `RescueTransfer`.
