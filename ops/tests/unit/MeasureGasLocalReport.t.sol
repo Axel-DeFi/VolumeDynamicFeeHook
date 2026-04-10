@@ -8,6 +8,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {GasMeasurementLocalBase} from "../../local/foundry/GasMeasurementLocalBase.sol";
+import {GasMeasurementLib} from "../../shared/lib/GasMeasurementLib.sol";
 import {OpsTypes} from "../../shared/types/OpsTypes.sol";
 
 contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
@@ -15,6 +16,9 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         NormalSwapInPeriod,
         SinglePeriodClose,
         SinglePeriodCloseWithFeeChange,
+        CashToFloorNormalImmediate,
+        CashToFloorNormalAfterGap,
+        CashToFloorEmergency,
         IdleReset,
         CatchUpSmall,
         CatchUpLarge,
@@ -40,6 +44,52 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         uint256 takeBefore;
     }
 
+    struct StateSnapshot {
+        uint8 feeIdx;
+        uint8 holdRemaining;
+        uint8 upExtremeStreak;
+        uint8 downStreak;
+        uint8 emergencyStreak;
+        uint64 periodStart;
+        uint64 periodVolume;
+        uint96 emaVolumeScaled;
+        bool paused;
+    }
+
+    struct ControllerTransitionTraceLog {
+        uint64 periodStart;
+        uint24 fromFee;
+        uint8 fromFeeIdx;
+        uint24 toFee;
+        uint8 toFeeIdx;
+        uint64 periodVolume;
+        uint96 emaVolumeBefore;
+        uint96 emaVolumeAfter;
+        uint64 approxLpFeesUsd;
+        uint16 decisionBits;
+        uint16 stateBitsBefore;
+        uint16 stateBitsAfter;
+        uint8 reasonCode;
+    }
+
+    struct PeriodClosedLog {
+        uint24 fromFee;
+        uint8 fromFeeIdx;
+        uint24 toFee;
+        uint8 toFeeIdx;
+        uint64 periodVolume;
+        uint96 emaVolumeScaled;
+        uint64 approxLpFeesUsd;
+        uint8 reasonCode;
+    }
+
+    struct ScenarioLogCapture {
+        LogCounts counts;
+        ControllerTransitionTraceLog lastTrace;
+        PeriodClosedLog lastPeriodClosed;
+    }
+
+    uint64 internal constant CASH_TO_FLOOR_AFTER_GAP_PERIODS = 2;
     uint64 internal constant CATCH_UP_SMALL_PERIODS = 2;
     uint64 internal constant CATCH_UP_LARGE_PERIODS = 8;
     uint64 internal constant CATCH_UP_WORST_PERIODS = 23;
@@ -50,6 +100,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     uint24 internal constant LARGE_CLAIM_CASH_FEE = 999_999;
     uint24 internal constant LARGE_CLAIM_EXTREME_FEE = 1_000_000;
     uint256 internal constant POOL_MANAGER_SETTLEMENT_LIMIT = uint256(uint128(type(int128).max));
+    uint16 internal constant TRACE_FLAG_EMERGENCY_TRIGGERED = 0x0008;
 
     bool internal _useLargeClaimConfig;
 
@@ -109,6 +160,18 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         _runMeasuredScenario(Scenario.SinglePeriodCloseWithFeeChange);
     }
 
+    function testGas_cash_to_floor_normal_immediate() public {
+        _runMeasuredScenario(Scenario.CashToFloorNormalImmediate);
+    }
+
+    function testGas_cash_to_floor_normal_after_gap() public {
+        _runMeasuredScenario(Scenario.CashToFloorNormalAfterGap);
+    }
+
+    function testGas_cash_to_floor_emergency() public {
+        _runMeasuredScenario(Scenario.CashToFloorEmergency);
+    }
+
     function testGas_idle_reset() public {
         _runMeasuredScenario(Scenario.IdleReset);
     }
@@ -144,6 +207,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     function _runMeasuredScenario(Scenario scenario) internal {
         vm.pauseGasMetering();
         _setUpScenario(scenario);
+        StateSnapshot memory beforeState = _captureState();
 
         bool ownerOp = _requiresOwnerPrank(scenario);
         address ownerAddr = vm.addr(cfg.privateKey);
@@ -167,7 +231,8 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             vm.stopPrank();
         }
 
-        _assertScenario(scenario, vm.getRecordedLogs(), snapshot);
+        StateSnapshot memory afterState = _captureState();
+        _assertScenario(scenario, beforeState, afterState, vm.getRecordedLogs(), snapshot);
     }
 
     function _setUpScenario(Scenario scenario) internal {
@@ -198,6 +263,21 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             // Measured call closes one qualifying period and transitions FLOOR -> CASH.
             _primeFloorToCash();
             _warpPeriods(1);
+            return;
+        }
+
+        if (scenario == Scenario.CashToFloorNormalImmediate) {
+            _setUpCashToFloorNormalImmediate();
+            return;
+        }
+
+        if (scenario == Scenario.CashToFloorNormalAfterGap) {
+            _setUpCashToFloorNormalAfterGap();
+            return;
+        }
+
+        if (scenario == Scenario.CashToFloorEmergency) {
+            _setUpCashToFloorEmergency();
             return;
         }
 
@@ -237,11 +317,14 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     function _executeScenario(Scenario scenario) internal {
         if (
             scenario == Scenario.NormalSwapInPeriod || scenario == Scenario.SinglePeriodClose
-                || scenario == Scenario.SinglePeriodCloseWithFeeChange || scenario == Scenario.IdleReset
-                || scenario == Scenario.CatchUpSmall || scenario == Scenario.CatchUpLarge
-                || scenario == Scenario.CatchUpWorst || scenario == Scenario.CatchUpWithFeeChange
+                || scenario == Scenario.SinglePeriodCloseWithFeeChange
+                || scenario == Scenario.CashToFloorNormalImmediate
+                || scenario == Scenario.CashToFloorNormalAfterGap || scenario == Scenario.CashToFloorEmergency
+                || scenario == Scenario.IdleReset || scenario == Scenario.CatchUpSmall
+                || scenario == Scenario.CatchUpLarge || scenario == Scenario.CatchUpWorst
+                || scenario == Scenario.CatchUpWithFeeChange
         ) {
-            _swapStable(_minCountedStableRaw());
+            _swapStable(_measuredSwapAmountStableRaw(scenario));
             return;
         }
 
@@ -256,6 +339,114 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         _warpPeriods(periods);
     }
 
+    function _setUpCashToFloorNormalImmediate() internal {
+        _enterCashWithOrdinaryWeakOpenPeriod();
+
+        uint256 weakClosesBeforeMeasurement =
+            uint256(cfg.holdCashPeriods) + uint256(cfg.exitCashConfirmPeriods) - 2;
+
+        for (uint256 i = 0; i < weakClosesBeforeMeasurement; ++i) {
+            _advanceCashOrdinaryWeakClose();
+        }
+
+        StateSnapshot memory preState = _captureState();
+        assertEq(preState.feeIdx, hook.MODE_CASH(), "immediate-down setup must start in cash");
+        assertEq(preState.holdRemaining, 0, "immediate-down setup must exhaust hold before measurement");
+        assertEq(
+            preState.downStreak,
+            cfg.exitCashConfirmPeriods - 1,
+            "immediate-down setup must be one ordinary close short of floor"
+        );
+        assertEq(preState.emergencyStreak, 0, "immediate-down setup must avoid emergency reset");
+
+        _warpPeriods(1);
+    }
+
+    function _setUpCashToFloorNormalAfterGap() internal {
+        require(cfg.exitCashConfirmPeriods >= 3, "gap down needs >=3 confirms");
+        require(
+            CASH_TO_FLOOR_AFTER_GAP_PERIODS * uint64(cfg.periodSeconds) < uint64(cfg.idleResetSeconds),
+            "gap down crosses idle reset"
+        );
+
+        _enterCashWithOrdinaryWeakOpenPeriod();
+
+        uint256 weakClosesBeforeGap =
+            uint256(cfg.holdCashPeriods) + uint256(cfg.exitCashConfirmPeriods) - 3;
+
+        for (uint256 i = 0; i < weakClosesBeforeGap; ++i) {
+            _advanceCashOrdinaryWeakClose();
+        }
+
+        StateSnapshot memory preGapState = _captureState();
+        assertEq(preGapState.feeIdx, hook.MODE_CASH(), "gap-down setup must start in cash");
+        assertEq(preGapState.holdRemaining, 0, "gap-down setup must finish hold before the overdue gap");
+        assertEq(
+            preGapState.downStreak,
+            cfg.exitCashConfirmPeriods - 2,
+            "gap-down setup must leave two overdue closes for the ordinary descent"
+        );
+        assertEq(preGapState.emergencyStreak, 0, "gap-down setup must avoid emergency reset before the gap");
+
+        _warpPeriods(CASH_TO_FLOOR_AFTER_GAP_PERIODS);
+    }
+
+    function _setUpCashToFloorEmergency() internal {
+        _enterCashWithEmergencyWeakOpenPeriod();
+
+        uint256 lowClosesBeforeMeasurement = uint256(cfg.lowVolumeResetPeriods) - 1;
+        for (uint256 i = 0; i < lowClosesBeforeMeasurement; ++i) {
+            _warpPeriods(1);
+            _swapStable(_minCountedStableRaw());
+            _assertMode(hook.MODE_CASH());
+        }
+
+        StateSnapshot memory preState = _captureState();
+        assertEq(preState.feeIdx, hook.MODE_CASH(), "emergency-down setup must start in cash");
+        assertGt(preState.holdRemaining, 0, "emergency-down setup must keep ordinary hold active");
+        assertEq(preState.downStreak, 0, "emergency-down setup must not rely on ordinary down confirms");
+        assertEq(
+            preState.emergencyStreak,
+            cfg.lowVolumeResetPeriods - 1,
+            "emergency-down setup must be one low-volume close short of reset"
+        );
+
+        _warpPeriods(1);
+    }
+
+    function _enterCashWithOrdinaryWeakOpenPeriod() internal {
+        _primeFloorToCash();
+        _completeFloorToCash(_chooseNextDownOpenPeriodUsd6(cfg.exitCashEmaRatioPct));
+        _assertMode(hook.MODE_CASH());
+    }
+
+    function _enterCashWithEmergencyWeakOpenPeriod() internal {
+        _primeFloorToCash();
+        _completeFloorToCash(_minCountedUsd6());
+        _assertMode(hook.MODE_CASH());
+    }
+
+    function _advanceCashOrdinaryWeakClose() internal {
+        _warpPeriods(1);
+        _swapStable(_ordinaryCashWeakStableRaw());
+        _assertMode(hook.MODE_CASH());
+    }
+
+    function _ordinaryCashWeakStableRaw() internal view returns (uint256) {
+        return
+            GasMeasurementLib.usd6ToStableRaw(
+                _chooseNextDownOpenPeriodUsd6(cfg.exitCashEmaRatioPct), cfg.stableDecimals
+            );
+    }
+
+    function _measuredSwapAmountStableRaw(Scenario scenario) internal view returns (uint256) {
+        if (scenario == Scenario.CashToFloorNormalImmediate || scenario == Scenario.CashToFloorNormalAfterGap) {
+            return _ordinaryCashWeakStableRaw();
+        }
+
+        return _minCountedStableRaw();
+    }
+
     function _accrueChunkedClaimFee() internal {
         SwapParams memory params =
             SwapParams({zeroForOne: true, amountSpecified: -1, sqrtPriceLimitX96: 0});
@@ -263,26 +454,47 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         manager.callAfterSwapWithParams(hook, key, params, delta);
     }
 
-    function _assertScenario(Scenario scenario, Vm.Log[] memory logs, CounterSnapshot memory snapshot) internal view {
-        LogCounts memory counts = _collectLogCounts(logs);
+    function _assertScenario(
+        Scenario scenario,
+        StateSnapshot memory beforeState,
+        StateSnapshot memory afterState,
+        Vm.Log[] memory logs,
+        CounterSnapshot memory snapshot
+    ) internal view {
+        ScenarioLogCapture memory capture = _collectLogCapture(logs);
 
         if (scenario == Scenario.NormalSwapInPeriod) {
-            _assertNormalSwap(counts, snapshot);
+            _assertNormalSwap(capture.counts, snapshot);
             return;
         }
 
         if (scenario == Scenario.SinglePeriodClose) {
-            _assertSinglePeriodClose(counts, snapshot);
+            _assertSinglePeriodClose(capture.counts, snapshot);
             return;
         }
 
         if (scenario == Scenario.SinglePeriodCloseWithFeeChange) {
-            _assertSinglePeriodCloseWithFeeChange(counts, snapshot);
+            _assertSinglePeriodCloseWithFeeChange(capture.counts, snapshot);
+            return;
+        }
+
+        if (scenario == Scenario.CashToFloorNormalImmediate) {
+            _assertCashToFloorNormalImmediate(beforeState, afterState, capture, snapshot);
+            return;
+        }
+
+        if (scenario == Scenario.CashToFloorNormalAfterGap) {
+            _assertCashToFloorNormalAfterGap(beforeState, afterState, capture, snapshot);
+            return;
+        }
+
+        if (scenario == Scenario.CashToFloorEmergency) {
+            _assertCashToFloorEmergency(beforeState, afterState, capture, snapshot);
             return;
         }
 
         if (scenario == Scenario.IdleReset) {
-            _assertIdleReset(counts, snapshot);
+            _assertIdleReset(capture.counts, snapshot);
             return;
         }
 
@@ -290,26 +502,26 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             scenario == Scenario.CatchUpSmall || scenario == Scenario.CatchUpLarge
                 || scenario == Scenario.CatchUpWorst
         ) {
-            _assertCatchUp(counts, snapshot, _scenarioPeriods(scenario));
+            _assertCatchUp(capture.counts, snapshot, _scenarioPeriods(scenario));
             return;
         }
 
         if (scenario == Scenario.CatchUpWithFeeChange) {
-            _assertCatchUpWithFeeChange(counts, snapshot);
+            _assertCatchUpWithFeeChange(capture.counts, snapshot);
             return;
         }
 
         if (scenario == Scenario.ClaimHookFeesNormal) {
-            _assertNormalClaim(counts, snapshot);
+            _assertNormalClaim(capture.counts, snapshot);
             return;
         }
 
         if (scenario == Scenario.ClaimHookFeesChunkedMulti) {
-            _assertChunkedClaimMulti(counts, snapshot);
+            _assertChunkedClaimMulti(capture.counts, snapshot);
             return;
         }
 
-        _assertChunkedClaim(counts, snapshot);
+        _assertChunkedClaim(capture.counts, snapshot);
     }
 
     function _setUpLargeClaimMeasurementEnv(uint256 swapCount, uint256 expectedChunks) internal {
@@ -371,6 +583,148 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(feeIdx, hook.MODE_CASH(), "scenario must exercise FLOOR -> CASH");
         assertGt(periodStart, 0, "transition close must preserve initialized period start");
         assertEq(manager.updateCount(), snapshot.updateBefore + 1, "transition close must perform one LP fee update");
+    }
+
+    function _assertCashToFloorNormalImmediate(
+        StateSnapshot memory beforeState,
+        StateSnapshot memory afterState,
+        ScenarioLogCapture memory capture,
+        CounterSnapshot memory snapshot
+    ) internal view {
+        assertEq(beforeState.feeIdx, hook.MODE_CASH(), "ordinary immediate path must start in cash");
+        assertEq(beforeState.holdRemaining, 0, "ordinary immediate path must start after hold is exhausted");
+        assertEq(
+            beforeState.downStreak,
+            cfg.exitCashConfirmPeriods - 1,
+            "ordinary immediate path must start one confirm short of cash->floor"
+        );
+        assertEq(beforeState.emergencyStreak, 0, "ordinary immediate path must not preload emergency reset");
+
+        assertEq(capture.counts.periodClosedCount, 1, "ordinary immediate path must close exactly one elapsed period");
+        assertEq(capture.counts.traceCount, 1, "ordinary immediate path must emit one close trace");
+        assertEq(capture.counts.idleResetCount, 0, "ordinary immediate path must not idle reset");
+        assertEq(capture.counts.feeUpdatedCount, 1, "ordinary immediate path must sync LP fee once");
+        assertEq(capture.lastTrace.fromFeeIdx, hook.MODE_CASH(), "ordinary immediate path must start from cash");
+        assertEq(capture.lastTrace.toFeeIdx, hook.MODE_FLOOR(), "ordinary immediate path must end at floor");
+        assertEq(
+            capture.lastTrace.reasonCode,
+            hook.REASON_DOWN_TO_FLOOR(),
+            "ordinary immediate path must use the normal cash->floor transition"
+        );
+        assertEq(
+            capture.lastTrace.decisionBits & TRACE_FLAG_EMERGENCY_TRIGGERED,
+            0,
+            "ordinary immediate path must not use emergency reset"
+        );
+        assertEq(
+            capture.lastPeriodClosed.reasonCode,
+            hook.REASON_DOWN_TO_FLOOR(),
+            "ordinary immediate close must report the normal downward reason"
+        );
+
+        assertEq(afterState.feeIdx, hook.MODE_FLOOR(), "ordinary immediate path must end in floor");
+        assertEq(afterState.downStreak, 0, "ordinary immediate path must clear the down streak after transition");
+        assertEq(afterState.emergencyStreak, 0, "ordinary immediate path must keep emergency reset inactive");
+        assertEq(manager.updateCount(), snapshot.updateBefore + 1, "ordinary immediate path must perform one LP fee update");
+    }
+
+    function _assertCashToFloorNormalAfterGap(
+        StateSnapshot memory beforeState,
+        StateSnapshot memory afterState,
+        ScenarioLogCapture memory capture,
+        CounterSnapshot memory snapshot
+    ) internal view {
+        assertEq(beforeState.feeIdx, hook.MODE_CASH(), "ordinary gap path must start in cash");
+        assertEq(beforeState.holdRemaining, 0, "ordinary gap path must start after hold is exhausted");
+        assertEq(
+            beforeState.downStreak,
+            cfg.exitCashConfirmPeriods - 2,
+            "ordinary gap path must start two overdue closes short of cash->floor"
+        );
+        assertEq(beforeState.emergencyStreak, 0, "ordinary gap path must not preload emergency reset");
+
+        assertEq(
+            capture.counts.periodClosedCount,
+            CASH_TO_FLOOR_AFTER_GAP_PERIODS,
+            "ordinary gap path must close the expected overdue periods"
+        );
+        assertEq(
+            capture.counts.traceCount,
+            CASH_TO_FLOOR_AFTER_GAP_PERIODS,
+            "ordinary gap path must emit one trace per overdue close"
+        );
+        assertEq(capture.counts.idleResetCount, 0, "ordinary gap path must not idle reset");
+        assertEq(capture.counts.feeUpdatedCount, 1, "ordinary gap path must sync LP fee once");
+        assertEq(capture.lastTrace.fromFeeIdx, hook.MODE_CASH(), "ordinary gap path must start from cash");
+        assertEq(capture.lastTrace.toFeeIdx, hook.MODE_FLOOR(), "ordinary gap path must end at floor");
+        assertEq(
+            capture.lastTrace.reasonCode,
+            hook.REASON_DOWN_TO_FLOOR(),
+            "ordinary gap path must end through the normal cash->floor transition"
+        );
+        assertEq(
+            capture.lastTrace.decisionBits & TRACE_FLAG_EMERGENCY_TRIGGERED,
+            0,
+            "ordinary gap path must not use emergency reset"
+        );
+        assertEq(
+            capture.lastPeriodClosed.reasonCode,
+            hook.REASON_DOWN_TO_FLOOR(),
+            "ordinary gap close must report the normal downward reason"
+        );
+
+        assertEq(afterState.feeIdx, hook.MODE_FLOOR(), "ordinary gap path must end in floor");
+        assertEq(afterState.downStreak, 0, "ordinary gap path must clear the down streak after transition");
+        assertLt(
+            afterState.emergencyStreak,
+            cfg.lowVolumeResetPeriods,
+            "ordinary gap path must stay below the emergency reset threshold"
+        );
+        assertEq(manager.updateCount(), snapshot.updateBefore + 1, "ordinary gap path must perform one LP fee update");
+    }
+
+    function _assertCashToFloorEmergency(
+        StateSnapshot memory beforeState,
+        StateSnapshot memory afterState,
+        ScenarioLogCapture memory capture,
+        CounterSnapshot memory snapshot
+    ) internal view {
+        assertEq(beforeState.feeIdx, hook.MODE_CASH(), "emergency path must start in cash");
+        assertGt(beforeState.holdRemaining, 0, "emergency path must still have ordinary hold active");
+        assertEq(beforeState.downStreak, 0, "emergency path must not preload the ordinary down confirm");
+        assertEq(
+            beforeState.emergencyStreak,
+            cfg.lowVolumeResetPeriods - 1,
+            "emergency path must start one low-volume close short of reset"
+        );
+
+        assertEq(capture.counts.periodClosedCount, 1, "emergency path must close exactly one elapsed period");
+        assertEq(capture.counts.traceCount, 1, "emergency path must emit one close trace");
+        assertEq(capture.counts.idleResetCount, 0, "emergency path must not idle reset");
+        assertEq(capture.counts.feeUpdatedCount, 1, "emergency path must sync LP fee once");
+        assertEq(capture.lastTrace.fromFeeIdx, hook.MODE_CASH(), "emergency path must start from cash");
+        assertEq(capture.lastTrace.toFeeIdx, hook.MODE_FLOOR(), "emergency path must end at floor");
+        assertEq(
+            capture.lastTrace.reasonCode,
+            hook.REASON_EMERGENCY_FLOOR(),
+            "emergency path must use the low-volume reset reason"
+        );
+        assertEq(
+            capture.lastTrace.decisionBits & TRACE_FLAG_EMERGENCY_TRIGGERED,
+            TRACE_FLAG_EMERGENCY_TRIGGERED,
+            "emergency path must mark the emergency reset decision"
+        );
+        assertEq(
+            capture.lastPeriodClosed.reasonCode,
+            hook.REASON_EMERGENCY_FLOOR(),
+            "emergency close must report the low-volume reset reason"
+        );
+
+        assertEq(afterState.feeIdx, hook.MODE_FLOOR(), "emergency path must end in floor");
+        assertEq(afterState.holdRemaining, 0, "emergency reset must clear hold");
+        assertEq(afterState.downStreak, 0, "emergency reset must clear the ordinary down streak");
+        assertEq(afterState.emergencyStreak, 0, "emergency reset must clear the emergency streak");
+        assertEq(manager.updateCount(), snapshot.updateBefore + 1, "emergency path must perform one LP fee update");
     }
 
     function _assertIdleReset(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
@@ -465,12 +819,90 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(manager.takeCount(), snapshot.takeBefore + 3, "multi-chunk claim must take in three chunks");
     }
 
-    function _collectLogCounts(Vm.Log[] memory logs) internal view returns (LogCounts memory counts) {
-        counts.periodClosedCount = _countHookLogs(logs, PERIOD_CLOSED_SIG);
-        counts.traceCount = _countHookLogs(logs, TRACE_SIG);
-        counts.idleResetCount = _countHookLogs(logs, IDLE_RESET_SIG);
-        counts.feeUpdatedCount = _countHookLogs(logs, FEE_UPDATED_SIG);
-        counts.claimCount = _countHookLogs(logs, HOOK_FEES_CLAIMED_SIG);
+    function _collectLogCapture(Vm.Log[] memory logs) internal view returns (ScenarioLogCapture memory capture) {
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].emitter != address(hook) || logs[i].topics.length == 0) continue;
+
+            bytes32 topic0 = logs[i].topics[0];
+            if (topic0 == TRACE_SIG) {
+                capture.counts.traceCount += 1;
+                (
+                    uint64 periodStart_,
+                    uint24 fromFee_,
+                    uint8 fromFeeIdx_,
+                    uint24 toFee_,
+                    uint8 toFeeIdx_,
+                    uint64 periodVolume_,
+                    uint96 emaVolumeBefore_,
+                    uint96 emaVolumeAfter_,
+                    uint64 approxLpFeesUsd_,
+                    uint16 decisionBits_,
+                    uint16 stateBitsBefore_,
+                    uint16 stateBitsAfter_,
+                    uint8 reasonCode_
+                ) = abi.decode(
+                    logs[i].data,
+                    (uint64, uint24, uint8, uint24, uint8, uint64, uint96, uint96, uint64, uint16, uint16, uint16, uint8)
+                );
+
+                capture.lastTrace = ControllerTransitionTraceLog({
+                    periodStart: periodStart_,
+                    fromFee: fromFee_,
+                    fromFeeIdx: fromFeeIdx_,
+                    toFee: toFee_,
+                    toFeeIdx: toFeeIdx_,
+                    periodVolume: periodVolume_,
+                    emaVolumeBefore: emaVolumeBefore_,
+                    emaVolumeAfter: emaVolumeAfter_,
+                    approxLpFeesUsd: approxLpFeesUsd_,
+                    decisionBits: decisionBits_,
+                    stateBitsBefore: stateBitsBefore_,
+                    stateBitsAfter: stateBitsAfter_,
+                    reasonCode: reasonCode_
+                });
+                continue;
+            }
+
+            if (topic0 == PERIOD_CLOSED_SIG) {
+                capture.counts.periodClosedCount += 1;
+                (
+                    uint24 fromFee_,
+                    uint8 fromFeeIdx_,
+                    uint24 toFee_,
+                    uint8 toFeeIdx_,
+                    uint64 periodVolume_,
+                    uint96 emaVolumeScaled_,
+                    uint64 approxLpFeesUsd_,
+                    uint8 reasonCode_
+                ) = abi.decode(logs[i].data, (uint24, uint8, uint24, uint8, uint64, uint96, uint64, uint8));
+
+                capture.lastPeriodClosed = PeriodClosedLog({
+                    fromFee: fromFee_,
+                    fromFeeIdx: fromFeeIdx_,
+                    toFee: toFee_,
+                    toFeeIdx: toFeeIdx_,
+                    periodVolume: periodVolume_,
+                    emaVolumeScaled: emaVolumeScaled_,
+                    approxLpFeesUsd: approxLpFeesUsd_,
+                    reasonCode: reasonCode_
+                });
+                continue;
+            }
+
+            if (topic0 == IDLE_RESET_SIG) {
+                capture.counts.idleResetCount += 1;
+                continue;
+            }
+
+            if (topic0 == FEE_UPDATED_SIG) {
+                capture.counts.feeUpdatedCount += 1;
+                continue;
+            }
+
+            if (topic0 == HOOK_FEES_CLAIMED_SIG) {
+                capture.counts.claimCount += 1;
+            }
+        }
     }
 
     function _requiresOwnerPrank(Scenario scenario) internal pure returns (bool) {
@@ -490,11 +922,17 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         vm.warp(block.timestamp + uint256(periods) * uint256(cfg.periodSeconds));
     }
 
-    function _countHookLogs(Vm.Log[] memory logs, bytes32 topic0) internal view returns (uint256 count) {
-        for (uint256 i = 0; i < logs.length; ++i) {
-            if (logs[i].emitter == address(hook) && logs[i].topics.length > 0 && logs[i].topics[0] == topic0) {
-                ++count;
-            }
-        }
+    function _captureState() internal view returns (StateSnapshot memory state_) {
+        (
+            state_.feeIdx,
+            state_.holdRemaining,
+            state_.upExtremeStreak,
+            state_.downStreak,
+            state_.emergencyStreak,
+            state_.periodStart,
+            state_.periodVolume,
+            state_.emaVolumeScaled,
+            state_.paused
+        ) = hook.getStateDebug();
     }
 }

@@ -19,6 +19,15 @@ describe_operation() {
     single_period_close_with_fee_change)
       printf '%s' 'One elapsed-period close; FLOOR -> CASH transition with LP fee sync'
       ;;
+    cash_to_floor_normal_immediate)
+      printf '%s' 'One elapsed-period close; ordinary CASH -> FLOOR right after hold exhaustion'
+      ;;
+    cash_to_floor_normal_after_gap)
+      printf '%s' 'Catch-up over 2 overdue weak periods; ordinary CASH -> FLOOR after short gap'
+      ;;
+    cash_to_floor_emergency)
+      printf '%s' 'One elapsed-period close; emergency low-volume CASH -> FLOOR reset'
+      ;;
     idle_reset)
       printf '%s' 'Idle reset branch after inactivity threshold'
       ;;
@@ -75,6 +84,9 @@ append_scenario_summary() {
       normal_swap_in_period \
       single_period_close \
       single_period_close_with_fee_change \
+      cash_to_floor_normal_immediate \
+      cash_to_floor_normal_after_gap \
+      cash_to_floor_emergency \
       idle_reset \
       catch_up_small \
       catch_up_large \
