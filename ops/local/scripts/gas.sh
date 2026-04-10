@@ -6,6 +6,7 @@ source "${ROOT_DIR}/ops/shared/scripts/gas_common.sh"
 
 load_local_config "gas"
 gas_require_tools
+require_cmd git
 gas_setup_paths "${OPS_LOCAL_DIR}" "local"
 
 describe_operation() {
@@ -164,6 +165,11 @@ append_scenario_summary() {
 runs="${OPS_GAS_RUNS:-5}"
 chain_id="${CHAIN_ID_EXPECTED:-31337}"
 report_test_path='ops/tests/unit/MeasureGasLocalReport.t.sol'
+timing_path="${OPS_LOCAL_DIR}/out/reports/gas.local.timing.json"
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+start_epoch="$(date +%s)"
+command="OPS_GAS_RUNS=${runs} ops/local/scripts/gas.sh"
+git_commit_start="$(git rev-parse HEAD)"
 tmp_output="$(mktemp)"
 tmp_samples="$(mktemp)"
 : > "${tmp_samples}"
@@ -216,8 +222,44 @@ jq -s '.' "${tmp_samples}" > "${OPS_GAS_SAMPLES_PATH}"
 gas_render_reports_from_samples_file "local" "${chain_id}" "${runs}" "${OPS_GAS_SAMPLES_PATH}"
 append_scenario_summary
 
+ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+end_epoch="$(date +%s)"
+elapsed_seconds="$((end_epoch - start_epoch))"
+elapsed_hms="$(printf '%02d:%02d:%02d' $((elapsed_seconds / 3600)) $(((elapsed_seconds % 3600) / 60)) $((elapsed_seconds % 60)))"
+git_commit_end="$(git rev-parse HEAD)"
+
+if [[ "${git_commit_start}" != "${git_commit_end}" ]]; then
+  echo "ERROR: git HEAD changed during benchmark run: ${git_commit_start} -> ${git_commit_end}" >&2
+  exit 1
+fi
+
+jq -n \
+  --arg startedAt "${started_at}" \
+  --arg endedAt "${ended_at}" \
+  --arg command "${command}" \
+  --arg gitCommit "${git_commit_start}" \
+  --argjson runs "${runs}" \
+  --argjson elapsedSeconds "${elapsed_seconds}" \
+  --arg elapsedHms "${elapsed_hms}" \
+  --arg reportJson "${OPS_GAS_REPORT_JSON}" \
+  --arg reportMd "${OPS_GAS_REPORT_MD}" \
+  --arg samplesJson "${OPS_GAS_SAMPLES_PATH}" \
+  '{
+    startedAt: $startedAt,
+    endedAt: $endedAt,
+    elapsedSeconds: $elapsedSeconds,
+    elapsedHms: $elapsedHms,
+    runs: $runs,
+    command: $command,
+    gitCommit: $gitCommit,
+    reportJson: $reportJson,
+    reportMd: $reportMd,
+    samplesJson: $samplesJson
+  }' > "${timing_path}"
+
 rm -f "${tmp_output}" "${tmp_samples}"
 
 echo "gas samples: ${OPS_GAS_SAMPLES_PATH}"
 echo "gas report json: ${OPS_GAS_REPORT_JSON}"
 echo "gas report md: ${OPS_GAS_REPORT_MD}"
+echo "timing json: ${timing_path}"
