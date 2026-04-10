@@ -173,22 +173,6 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint16 decisionBits;
     }
 
-    struct PeriodTrace {
-        uint64 periodStart;
-        uint24 fromFee;
-        uint8 fromFeeIdx;
-        uint24 toFee;
-        uint8 toFeeIdx;
-        uint64 periodVolume;
-        uint96 emaVolumeBefore;
-        uint96 emaVolumeAfter;
-        uint64 approxLpFeesUsd;
-        uint16 decisionBits;
-        uint16 stateBitsBefore;
-        uint16 stateBitsAfter;
-        uint8 reasonCode;
-    }
-
     /// @notice Working context for the `_afterSwap` orchestrator.
     /// @dev Holds unpacked state fields and per-call temporaries to reduce stack depth
     ///      and enable clean decomposition into helper functions.
@@ -682,21 +666,19 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         }
 
         _emitPeriodTrace(
-            PeriodTrace({
-                periodStart: closedPeriodStart,
-                fromFee: prevFee,
-                fromFeeIdx: prevFeeIdx,
-                toFee: activeFee,
-                toFeeIdx: ctx.feeIdx,
-                periodVolume: 0,
-                emaVolumeBefore: emaBefore,
-                emaVolumeAfter: 0,
-                approxLpFeesUsd: 0,
-                decisionBits: 0,
-                stateBitsBefore: stateBitsBefore,
-                stateBitsAfter: _packControllerTransitionCounters(ctx.paused, ctx.holdRemaining, 0, 0, 0),
-                reasonCode: REASON_IDLE_RESET
-            })
+            closedPeriodStart,
+            prevFee,
+            prevFeeIdx,
+            activeFee,
+            ctx.feeIdx,
+            0,
+            emaBefore,
+            0,
+            0,
+            0,
+            stateBitsBefore,
+            _packControllerTransitionCounters(ctx.paused, ctx.holdRemaining, 0, 0, 0),
+            REASON_IDLE_RESET
         );
         emit IdleReset(activeFee, ctx.feeIdx);
         return true;
@@ -705,12 +687,16 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Closes elapsed periods, runs the controller state machine, and emits period-close events.
     /// @dev Only modifies the in-memory context; does not write `_state`.
     function _closeElapsedPeriodsIfNeeded(AfterSwapCtx memory ctx) internal {
-        if (ctx.elapsed < _config.periodSeconds) return;
+        uint64 periodSeconds_ = uint64(_config.periodSeconds);
+        if (ctx.elapsed < periodSeconds_) return;
 
-        uint64 periods = ctx.elapsed / uint64(_config.periodSeconds);
+        uint24 floorFee_ = _config.floorFee;
+        uint24 cashFee_ = _config.cashFee;
+        uint24 extremeFee_ = _config.extremeFee;
+
+        uint64 periods = ctx.elapsed / periodSeconds_;
         uint64 firstPeriodVolume = ctx.periodVolume;
         ctx.periodVolumeForEvent = firstPeriodVolume;
-        uint64 periodStart0 = ctx.periodStart;
 
         uint8 prevFeeIdx = ctx.feeIdx;
 
@@ -720,15 +706,15 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint8 upStreak = ctx.upExtremeStreak;
         uint8 down = ctx.downStreak;
         uint8 emergency = ctx.emergencyStreak;
+        uint24 fromFee = _modeFeeFromCached(floorFee_, cashFee_, extremeFee_, f);
+        uint64 closedPeriodStart = ctx.periodStart;
+        uint64 periodVolume = firstPeriodVolume;
 
         for (uint64 i = 0; i < periods; ++i) {
-            uint64 periodVolume = i == 0 ? firstPeriodVolume : uint64(0);
-            uint64 closedPeriodStart = periodStart0 + i * uint64(_config.periodSeconds);
             uint16 stateBitsBefore =
                 _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
 
             uint8 fromFeeIdx = f;
-            uint24 fromFee = _modeFee(fromFeeIdx);
 
             (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory transition) =
                 _stepController(ema, f, periodVolume, hold, upStreak, down, emergency);
@@ -739,25 +725,30 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             down = transition.downStreak;
             emergency = transition.emergencyStreak;
 
+            uint24 toFee =
+                f == fromFeeIdx ? fromFee : _modeFeeFromCached(floorFee_, cashFee_, extremeFee_, f);
+
             _emitPeriodTrace(
-                PeriodTrace({
-                    periodStart: closedPeriodStart,
-                    fromFee: fromFee,
-                    fromFeeIdx: fromFeeIdx,
-                    toFee: _modeFee(f),
-                    toFeeIdx: f,
-                    periodVolume: periodVolume,
-                    emaVolumeBefore: emaBefore,
-                    emaVolumeAfter: ema,
-                    approxLpFeesUsd: _estimateApproxLpFeesUsd(periodVolume, fromFee),
-                    decisionBits: transition.decisionBits,
-                    stateBitsBefore: stateBitsBefore,
-                    stateBitsAfter: _packControllerTransitionCounters(
-                        ctx.paused, hold, upStreak, down, emergency
-                    ),
-                    reasonCode: transition.reasonCode
-                })
+                closedPeriodStart,
+                fromFee,
+                fromFeeIdx,
+                toFee,
+                f,
+                periodVolume,
+                emaBefore,
+                ema,
+                _estimateApproxLpFeesUsd(periodVolume, fromFee),
+                transition.decisionBits,
+                stateBitsBefore,
+                _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency),
+                transition.reasonCode
             );
+
+            fromFee = toFee;
+            periodVolume = 0;
+            unchecked {
+                closedPeriodStart += periodSeconds_;
+            }
         }
 
         ctx.emaVolScaled = ema;
@@ -768,7 +759,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         ctx.emergencyStreak = emergency;
         ctx.feeChanged = ctx.feeIdx != prevFeeIdx;
 
-        ctx.periodStart = ctx.periodStart + periods * uint64(_config.periodSeconds);
+        ctx.periodStart = closedPeriodStart;
 
         ctx.periodVolume = 0;
     }
@@ -1547,6 +1538,17 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         revert InvalidConfig();
     }
 
+    function _modeFeeFromCached(uint24 floorFee_, uint24 cashFee_, uint24 extremeFee_, uint8 idx)
+        internal
+        pure
+        returns (uint24)
+    {
+        if (idx == MODE_FLOOR) return floorFee_;
+        if (idx == MODE_CASH) return cashFee_;
+        if (idx == MODE_EXTREME) return extremeFee_;
+        revert InvalidConfig();
+    }
+
     /// @notice Accrues per-swap hook fee from swap settlement data using the active fee tier.
     /// @dev Estimation uses the unspecified side selected by the current exact-input/exact-output execution path.
     /// @dev Small systematic deviations between exact-input and exact-output paths are expected by design.
@@ -1651,41 +1653,51 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     }
 
     /// @notice Emits both `PeriodClosed` and `ControllerTransitionTrace` for a closed period.
-    function _emitPeriodTrace(PeriodTrace memory trace) internal {
+    function _emitPeriodTrace(
+        uint64 periodStart,
+        uint24 fromFee,
+        uint8 fromFeeIdx,
+        uint24 toFee,
+        uint8 toFeeIdx,
+        uint64 periodVolume,
+        uint96 emaVolumeBefore,
+        uint96 emaVolumeAfter,
+        uint64 approxLpFeesUsd,
+        uint16 decisionBits,
+        uint16 stateBitsBefore,
+        uint16 stateBitsAfter,
+        uint8 reasonCode
+    ) internal {
         emit PeriodClosed(
-            trace.fromFee,
-            trace.fromFeeIdx,
-            trace.toFee,
-            trace.toFeeIdx,
-            trace.periodVolume,
-            trace.emaVolumeAfter,
-            trace.approxLpFeesUsd,
-            trace.reasonCode
+            fromFee,
+            fromFeeIdx,
+            toFee,
+            toFeeIdx,
+            periodVolume,
+            emaVolumeAfter,
+            approxLpFeesUsd,
+            reasonCode
         );
-        _emitControllerTransitionTrace(trace);
+        emit ControllerTransitionTrace(
+            periodStart,
+            fromFee,
+            fromFeeIdx,
+            toFee,
+            toFeeIdx,
+            periodVolume,
+            emaVolumeBefore,
+            emaVolumeAfter,
+            approxLpFeesUsd,
+            decisionBits,
+            stateBitsBefore,
+            stateBitsAfter,
+            reasonCode
+        );
     }
 
     /// @notice Emits `FeeUpdated` event.
     function _emitFeeUpdate(uint24 fee, uint8 feeIdx, uint64 periodVolume, uint96 emaVolumeScaled) internal {
         emit FeeUpdated(fee, feeIdx, periodVolume, emaVolumeScaled);
-    }
-
-    function _emitControllerTransitionTrace(PeriodTrace memory trace) internal {
-        emit ControllerTransitionTrace(
-            trace.periodStart,
-            trace.fromFee,
-            trace.fromFeeIdx,
-            trace.toFee,
-            trace.toFeeIdx,
-            trace.periodVolume,
-            trace.emaVolumeBefore,
-            trace.emaVolumeAfter,
-            trace.approxLpFeesUsd,
-            trace.decisionBits,
-            trace.stateBitsBefore,
-            trace.stateBitsAfter,
-            trace.reasonCode
-        );
     }
 
     function _packControllerTransitionCounters(
