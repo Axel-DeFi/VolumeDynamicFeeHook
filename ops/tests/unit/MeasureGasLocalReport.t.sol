@@ -14,12 +14,15 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     enum Scenario {
         NormalSwapInPeriod,
         SinglePeriodClose,
+        SinglePeriodCloseWithFeeChange,
         IdleReset,
         CatchUpSmall,
         CatchUpLarge,
         CatchUpWorst,
+        CatchUpWithFeeChange,
         ClaimHookFeesNormal,
-        ClaimHookFeesChunked
+        ClaimHookFeesChunked,
+        ClaimHookFeesChunkedMulti
     }
 
     struct LogCounts {
@@ -40,7 +43,9 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     uint64 internal constant CATCH_UP_SMALL_PERIODS = 2;
     uint64 internal constant CATCH_UP_LARGE_PERIODS = 8;
     uint64 internal constant CATCH_UP_WORST_PERIODS = 23;
+    uint64 internal constant CATCH_UP_WITH_FEE_CHANGE_PERIODS = 2;
     uint256 internal constant LARGE_CLAIM_SWAP_COUNT = 11;
+    uint256 internal constant LARGE_CLAIM_MULTI_SWAP_COUNT = 21;
     uint24 internal constant LARGE_CLAIM_FLOOR_FEE = 999_998;
     uint24 internal constant LARGE_CLAIM_CASH_FEE = 999_999;
     uint24 internal constant LARGE_CLAIM_EXTREME_FEE = 1_000_000;
@@ -100,6 +105,10 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         _runMeasuredScenario(Scenario.SinglePeriodClose);
     }
 
+    function testGas_single_period_close_with_fee_change() public {
+        _runMeasuredScenario(Scenario.SinglePeriodCloseWithFeeChange);
+    }
+
     function testGas_idle_reset() public {
         _runMeasuredScenario(Scenario.IdleReset);
     }
@@ -116,12 +125,20 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         _runMeasuredScenario(Scenario.CatchUpWorst);
     }
 
+    function testGas_catch_up_with_fee_change() public {
+        _runMeasuredScenario(Scenario.CatchUpWithFeeChange);
+    }
+
     function testGas_claim_hook_fees_normal() public {
         _runMeasuredScenario(Scenario.ClaimHookFeesNormal);
     }
 
     function testGas_claim_hook_fees_chunked() public {
         _runMeasuredScenario(Scenario.ClaimHookFeesChunked);
+    }
+
+    function testGas_claim_hook_fees_chunked_multi() public {
+        _runMeasuredScenario(Scenario.ClaimHookFeesChunkedMulti);
     }
 
     function _runMeasuredScenario(Scenario scenario) internal {
@@ -155,17 +172,12 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
     function _setUpScenario(Scenario scenario) internal {
         if (scenario == Scenario.ClaimHookFeesChunked) {
-            _useLargeClaimConfig = true;
-            _setUpMeasurementEnv();
-            _useLargeClaimConfig = false;
+            _setUpLargeClaimMeasurementEnv(LARGE_CLAIM_SWAP_COUNT, 2);
+            return;
+        }
 
-            for (uint256 i = 0; i < LARGE_CLAIM_SWAP_COUNT; ++i) {
-                _accrueChunkedClaimFee();
-            }
-
-            (uint256 fees0, uint256 fees1) = hook.hookFeesAccrued();
-            assertEq(fees0, 0, "chunked claim setup must accrue only token1");
-            assertGt(fees1, POOL_MANAGER_SETTLEMENT_LIMIT, "chunked claim setup must exceed one settlement chunk");
+        if (scenario == Scenario.ClaimHookFeesChunkedMulti) {
+            _setUpLargeClaimMeasurementEnv(LARGE_CLAIM_MULTI_SWAP_COUNT, 3);
             return;
         }
 
@@ -178,6 +190,13 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
         if (scenario == Scenario.SinglePeriodClose) {
             _swapStable(_seedStableRaw());
+            _warpPeriods(1);
+            return;
+        }
+
+        if (scenario == Scenario.SinglePeriodCloseWithFeeChange) {
+            // Measured call closes one qualifying period and transitions FLOOR -> CASH.
+            _primeFloorToCash();
             _warpPeriods(1);
             return;
         }
@@ -203,6 +222,13 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             return;
         }
 
+        if (scenario == Scenario.CatchUpWithFeeChange) {
+            // Measured call catches up two overdue periods; the first overdue close transitions FLOOR -> CASH.
+            _primeFloorToCash();
+            _warpPeriods(CATCH_UP_WITH_FEE_CHANGE_PERIODS);
+            return;
+        }
+
         if (scenario == Scenario.ClaimHookFeesNormal) {
             _swapStable(_minCountedStableRaw());
         }
@@ -211,8 +237,9 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     function _executeScenario(Scenario scenario) internal {
         if (
             scenario == Scenario.NormalSwapInPeriod || scenario == Scenario.SinglePeriodClose
-                || scenario == Scenario.IdleReset || scenario == Scenario.CatchUpSmall
-                || scenario == Scenario.CatchUpLarge || scenario == Scenario.CatchUpWorst
+                || scenario == Scenario.SinglePeriodCloseWithFeeChange || scenario == Scenario.IdleReset
+                || scenario == Scenario.CatchUpSmall || scenario == Scenario.CatchUpLarge
+                || scenario == Scenario.CatchUpWorst || scenario == Scenario.CatchUpWithFeeChange
         ) {
             _swapStable(_minCountedStableRaw());
             return;
@@ -249,6 +276,11 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             return;
         }
 
+        if (scenario == Scenario.SinglePeriodCloseWithFeeChange) {
+            _assertSinglePeriodCloseWithFeeChange(counts, snapshot);
+            return;
+        }
+
         if (scenario == Scenario.IdleReset) {
             _assertIdleReset(counts, snapshot);
             return;
@@ -262,12 +294,40 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             return;
         }
 
+        if (scenario == Scenario.CatchUpWithFeeChange) {
+            _assertCatchUpWithFeeChange(counts, snapshot);
+            return;
+        }
+
         if (scenario == Scenario.ClaimHookFeesNormal) {
             _assertNormalClaim(counts, snapshot);
             return;
         }
 
+        if (scenario == Scenario.ClaimHookFeesChunkedMulti) {
+            _assertChunkedClaimMulti(counts, snapshot);
+            return;
+        }
+
         _assertChunkedClaim(counts, snapshot);
+    }
+
+    function _setUpLargeClaimMeasurementEnv(uint256 swapCount, uint256 expectedChunks) internal {
+        _useLargeClaimConfig = true;
+        _setUpMeasurementEnv();
+        _useLargeClaimConfig = false;
+
+        for (uint256 i = 0; i < swapCount; ++i) {
+            _accrueChunkedClaimFee();
+        }
+
+        (uint256 fees0, uint256 fees1) = hook.hookFeesAccrued();
+        uint256 lowerBound = POOL_MANAGER_SETTLEMENT_LIMIT * (expectedChunks - 1);
+        uint256 upperBound = POOL_MANAGER_SETTLEMENT_LIMIT * expectedChunks;
+
+        assertEq(fees0, 0, "large-claim setup must accrue only token1");
+        assertGt(fees1, lowerBound, "large-claim setup must exceed the previous chunk bound");
+        assertLe(fees1, upperBound, "large-claim setup must stay within the exact chunk count");
     }
 
     function _assertNormalSwap(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
@@ -298,6 +358,21 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(manager.updateCount(), snapshot.updateBefore, "single close baseline must not update LP fee");
     }
 
+    function _assertSinglePeriodCloseWithFeeChange(LogCounts memory counts, CounterSnapshot memory snapshot)
+        internal
+        view
+    {
+        (uint64 periodVolume,, uint64 periodStart, uint8 feeIdx) = hook.unpackedState();
+        assertEq(counts.periodClosedCount, 1, "transition close must close exactly one period");
+        assertEq(counts.traceCount, 1, "transition close must emit one close trace");
+        assertEq(counts.idleResetCount, 0, "transition close must not idle reset");
+        assertEq(counts.feeUpdatedCount, 1, "transition close must emit one fee sync");
+        assertEq(periodVolume, _minCountedUsd6(), "transition close must start a new counted open period");
+        assertEq(feeIdx, hook.MODE_CASH(), "scenario must exercise FLOOR -> CASH");
+        assertGt(periodStart, 0, "transition close must preserve initialized period start");
+        assertEq(manager.updateCount(), snapshot.updateBefore + 1, "transition close must perform one LP fee update");
+    }
+
     function _assertIdleReset(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
         (uint64 periodVolume, uint96 emaVolumeScaled,, uint8 feeIdx) = hook.unpackedState();
         assertEq(counts.periodClosedCount, 1, "idle reset must emit one closed-period record");
@@ -323,6 +398,26 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(feeIdx, hook.MODE_FLOOR(), "floor-mode catch-up baseline stays in floor mode");
         assertGt(periodStart, 0, "catch-up must preserve initialized period start");
         assertEq(manager.updateCount(), snapshot.updateBefore, "catch-up baseline must not update LP fee");
+    }
+
+    function _assertCatchUpWithFeeChange(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
+        (uint64 periodVolume,, uint64 periodStart, uint8 feeIdx) = hook.unpackedState();
+        assertEq(
+            counts.periodClosedCount,
+            CATCH_UP_WITH_FEE_CHANGE_PERIODS,
+            "transition catch-up must close the expected number of periods"
+        );
+        assertEq(
+            counts.traceCount,
+            CATCH_UP_WITH_FEE_CHANGE_PERIODS,
+            "transition catch-up must emit one trace per closed period"
+        );
+        assertEq(counts.idleResetCount, 0, "transition catch-up must stay below idle reset");
+        assertEq(counts.feeUpdatedCount, 1, "transition catch-up must emit one fee sync");
+        assertEq(periodVolume, _minCountedUsd6(), "transition catch-up must count the current swap into the fresh period");
+        assertEq(feeIdx, hook.MODE_CASH(), "scenario must include a FLOOR -> CASH transition");
+        assertGt(periodStart, 0, "transition catch-up must preserve initialized period start");
+        assertEq(manager.updateCount(), snapshot.updateBefore + 1, "transition catch-up must perform one LP fee update");
     }
 
     function _assertNormalClaim(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
@@ -355,6 +450,21 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(manager.takeCount(), snapshot.takeBefore + 2, "chunked claim must take in two chunks");
     }
 
+    function _assertChunkedClaimMulti(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
+        (uint256 fees0, uint256 fees1) = hook.hookFeesAccrued();
+        assertEq(counts.claimCount, 1, "multi-chunk claim must emit one claim event");
+        assertEq(counts.periodClosedCount, 0, "multi-chunk claim must not emit period-close telemetry");
+        assertEq(counts.traceCount, 0, "multi-chunk claim must not emit controller trace");
+        assertEq(counts.idleResetCount, 0, "multi-chunk claim must not idle reset");
+        assertEq(counts.feeUpdatedCount, 0, "multi-chunk claim must not touch LP fee");
+        assertEq(fees0, 0, "multi-chunk claim setup accrues only token1");
+        assertEq(fees1, 0, "multi-chunk claim must clear token1 accrual");
+        assertEq(manager.updateCount(), snapshot.updateBefore, "claim must not update LP fee");
+        assertEq(manager.unlockCount(), snapshot.unlockBefore + 1, "multi-chunk claim must still use one unlock");
+        assertEq(manager.burnCount(), snapshot.burnBefore + 3, "multi-chunk claim must burn in three chunks");
+        assertEq(manager.takeCount(), snapshot.takeBefore + 3, "multi-chunk claim must take in three chunks");
+    }
+
     function _collectLogCounts(Vm.Log[] memory logs) internal view returns (LogCounts memory counts) {
         counts.periodClosedCount = _countHookLogs(logs, PERIOD_CLOSED_SIG);
         counts.traceCount = _countHookLogs(logs, TRACE_SIG);
@@ -364,13 +474,15 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     }
 
     function _requiresOwnerPrank(Scenario scenario) internal pure returns (bool) {
-        return scenario == Scenario.ClaimHookFeesNormal || scenario == Scenario.ClaimHookFeesChunked;
+        return scenario == Scenario.ClaimHookFeesNormal || scenario == Scenario.ClaimHookFeesChunked
+            || scenario == Scenario.ClaimHookFeesChunkedMulti;
     }
 
     function _scenarioPeriods(Scenario scenario) internal pure returns (uint64) {
         if (scenario == Scenario.CatchUpSmall) return CATCH_UP_SMALL_PERIODS;
         if (scenario == Scenario.CatchUpLarge) return CATCH_UP_LARGE_PERIODS;
         if (scenario == Scenario.CatchUpWorst) return CATCH_UP_WORST_PERIODS;
+        if (scenario == Scenario.CatchUpWithFeeChange) return CATCH_UP_WITH_FEE_CHANGE_PERIODS;
         return 0;
     }
 
