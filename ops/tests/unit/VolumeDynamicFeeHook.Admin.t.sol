@@ -1470,6 +1470,48 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(hook.enterCashMinVolume(), p.enterCashMinVolume, "updated config must be stored");
     }
 
+    function test_setControllerSettings_clamps_active_cash_hold_to_new_limit() public {
+        _enterCashMode();
+
+        (uint8 feeIdxBefore, uint8 holdBefore,,,,,,,) = hook.getStateDebug();
+        assertEq(feeIdxBefore, hook.MODE_CASH(), "precondition: active mode must be cash");
+        assertEq(holdBefore, hook.holdCashPeriods(), "precondition: cash hold must start at configured value");
+
+        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
+        p.holdCashPeriods = 1;
+        hook.setControllerSettings(p);
+
+        (uint8 feeIdxAfter, uint8 holdAfter,,,,,,,) = hook.getStateDebug();
+        assertEq(feeIdxAfter, hook.MODE_CASH(), "mode must stay cash");
+        assertEq(holdAfter, p.holdCashPeriods, "active cash hold must not exceed the new configured maximum");
+    }
+
+    function test_setControllerSettings_clamps_active_extreme_hold_to_new_limit() public {
+        hook.pause();
+        VolumeDynamicFeeHook.ControllerSettings memory p = _defaultControllerSettings();
+        p.enterExtremeConfirmPeriods = 1;
+        hook.setControllerSettings(p);
+        hook.unpause();
+
+        _enterCashMode();
+        _closePeriodWithCountedVolume(EXTREME_STREAK2_CLOSEVOL_USD6);
+
+        (uint8 feeIdxBefore, uint8 holdBefore,,,,,,,) = hook.getStateDebug();
+        assertEq(feeIdxBefore, hook.MODE_EXTREME(), "precondition: active mode must be extreme");
+        assertEq(
+            holdBefore, hook.holdExtremePeriods(), "precondition: extreme hold must start at configured value"
+        );
+
+        p = _defaultControllerSettings();
+        p.enterExtremeConfirmPeriods = 1;
+        p.holdExtremePeriods = 1;
+        hook.setControllerSettings(p);
+
+        (uint8 feeIdxAfter, uint8 holdAfter,,,,,,,) = hook.getStateDebug();
+        assertEq(feeIdxAfter, hook.MODE_EXTREME(), "mode must stay extreme");
+        assertEq(holdAfter, p.holdExtremePeriods, "active extreme hold must not exceed the new configured maximum");
+    }
+
     function testFuzz_setResetSettings_rejects_lowVolumeReset_not_below_cash_threshold(uint64 seed)
         public
     {

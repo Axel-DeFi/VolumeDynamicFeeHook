@@ -59,7 +59,7 @@ ops/optimism/scripts/emergency.sh
 | --- | --- | --- | --- |
 | Model change | `setModel(...)` | Yes | Safe reset to `FLOOR`, zero EMA/counters, fresh open period, LP-fee sync if the active tier changes. |
 | Paused LP-fee maintenance | `setModeFees(...)` | Yes | Preserves active mode and EMA, clears hold/streak counters, fresh open period, immediate LP-fee sync if the active tier changes. |
-| Live controller tuning | `setControllerSettings(...)` | No | Updates transition thresholds immediately without resetting EMA or controller counters. |
+| Live controller tuning | `setControllerSettings(...)` | No | Updates transition thresholds immediately, preserves EMA and streak counters, and clamps any active mode hold to the new mode-specific maximum when needed. |
 | Live reset tuning | `setResetSettings(...)` | No | Updates `idleResetSeconds`, `lowVolumeReset`, and `lowVolumeResetPeriods` immediately without resetting controller runtime state. |
 | Live telemetry dust tuning | `setDustSwapThreshold(...)` | No | Applies immediately. Filters telemetry only and never schedules activation for a later period boundary. |
 | Timelocked HookFee update | `scheduleHookFeeChange(...)`, `cancelHookFeeChange()`, `executeHookFeeChange()` | No | Separate 48-hour timelock flow. Not part of model/controller/reset writes. |

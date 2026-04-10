@@ -105,7 +105,7 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 - Monitoring should consume reset events, not only fee update events.
 - Paused maintenance updates:
   - `setModeFees(...)` is paused-only, preserves active mode + EMA, clears counters, starts a fresh open period, and syncs LP fee if the active mode fee changed.
-  - `setControllerSettings(...)` updates transition thresholds immediately without resetting EMA or counters.
+  - `setControllerSettings(...)` updates transition thresholds immediately, preserves EMA and streak counters, and clamps any active mode hold to the new mode-specific maximum when needed.
   - `setModel(...)` is paused-only and always performs the safe reset for `periodSeconds` / `emaPeriods` changes.
   - `setResetSettings(...)` updates `idleResetSeconds`, `lowVolumeReset`, and `lowVolumeResetPeriods` immediately without resetting runtime state.
 

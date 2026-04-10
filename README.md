@@ -29,7 +29,7 @@ Use the current contract API as the source of truth. Owner writes are split into
 | Group | Read path | Write path | Effect |
 | --- | --- | --- | --- |
 | Explicit LP-fee triplet | `getModeFees()` | `setModeFees(...)` | Paused-only maintenance update. Preserves active mode and EMA, clears hold/streak counters, starts a fresh open period, and immediately syncs the LP fee if the active tier changed. |
-| Controller transition settings | `getControllerSettings()` | `setControllerSettings(...)` | Live operational change. Updates entry/exit thresholds and hold lengths immediately without resetting EMA or controller counters. |
+| Controller transition settings | `getControllerSettings()` | `setControllerSettings(...)` | Live operational change. Updates entry/exit thresholds immediately, keeps EMA and streak counters, and clamps any active mode hold to the new mode-specific maximum if the old hold would now exceed it. |
 | Reset settings | `getResetSettings()`, `idleResetSeconds()`, `lowVolumeReset()`, `lowVolumeResetPeriods()` | `setResetSettings(...)` | Live operational change. Updates idle-reset and low-volume-reset thresholds immediately without resetting controller runtime state. |
 | Model settings | `periodSeconds()`, `emaPeriods()` | `setModel(...)` | Paused-only model change. Safe-resets the controller to `FLOOR`, zeroes EMA/counters, restarts the open period, and syncs LP fee if needed. |
 | Telemetry dust filter | `dustSwapThreshold()` | `setDustSwapThreshold(...)` | Live operational change. Applies immediately and affects only volume telemetry, not swap execution or fee charging. |

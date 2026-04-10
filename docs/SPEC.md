@@ -144,7 +144,9 @@ Invalid combinations revert with `InvalidConfig`.
 Admin update behavior:
 - `setModeFees(...)` is paused-only, preserves active mode id + EMA, clears hold/streak counters, starts a fresh open period,
   and immediately syncs LP fee if the active mode fee changed.
-- `setControllerSettings(...)` updates transition thresholds immediately without resetting EMA or controller counters.
+- `setControllerSettings(...)` updates transition thresholds immediately without resetting EMA or streak counters.
+- If the active runtime hold exceeds the new mode-specific configured maximum, `setControllerSettings(...)`
+  clamps `holdRemaining` to that new maximum so the live hold config takes effect immediately.
 - `setModel(...)` is paused-only and always performs the safe reset described above.
 - `setResetSettings(...)` updates reset thresholds immediately without resetting controller runtime state.
 

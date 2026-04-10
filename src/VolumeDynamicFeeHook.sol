@@ -1172,9 +1172,39 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// `holdCashPeriods + exitCashConfirmPeriods - 1`, the earliest ordinary extreme->cash close is
     /// `holdExtremePeriods + exitExtremeConfirmPeriods - 1`.
     /// @dev Reset-group parameters (`idleResetSeconds`, `lowVolumeReset`, `lowVolumeResetPeriods`) are managed
-    /// separately via `setResetSettings`.
+    /// separately via `setResetSettings`. If the active runtime hold exceeds the new mode-specific configured
+    /// maximum, the stored hold counter is clamped so the live config takes effect immediately without disturbing
+    /// EMA or streak counters.
     function setControllerSettings(ControllerSettings calldata p) external onlyOwner {
         _setControllerSettingsInternal(p);
+
+        (
+            uint64 periodVolume,
+            uint96 emaVolScaled,
+            uint64 periodStart,
+            uint8 feeIdx,
+            bool paused_,
+            uint8 holdRemaining,
+            uint8 upExtremeStreak,
+            uint8 downStreak,
+            uint8 emergencyStreak
+        ) = _unpackState(_state);
+
+        uint8 maxHoldRemaining = feeIdx == MODE_CASH ? p.holdCashPeriods : feeIdx == MODE_EXTREME ? p.holdExtremePeriods : 0;
+        if (holdRemaining > maxHoldRemaining) {
+            _state = _packState(
+                periodVolume,
+                emaVolScaled,
+                periodStart,
+                feeIdx,
+                paused_,
+                maxHoldRemaining,
+                upExtremeStreak,
+                downStreak,
+                emergencyStreak
+            );
+        }
+
         emit ControllerSettingsUpdated(
             p.enterCashMinVolume,
             p.enterCashEmaRatioPct,

@@ -88,7 +88,7 @@ Timelock visibility is intentional. The main exposed effect is HookFee timing; L
 ### Paused maintenance updates
 
 - `setModeFees(...)` is paused-only, preserves active mode + EMA, clears hold/streak counters, starts a fresh open period, and syncs LP fee if the active mode fee changed.
-- `setControllerSettings(...)` updates transition thresholds immediately without resetting EMA or counters.
+- `setControllerSettings(...)` updates transition thresholds immediately, preserves EMA and streak counters, and clamps any active mode hold to the new mode-specific maximum when needed.
 - `setModel(...)` is paused-only and always performs a safe reset to `FLOOR` with zero EMA/counters and a fresh open period.
 - `setResetSettings(...)` updates `idleResetSeconds`, `lowVolumeReset`, and `lowVolumeResetPeriods` immediately without resetting runtime state.
 
