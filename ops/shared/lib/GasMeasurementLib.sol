@@ -15,8 +15,7 @@ library GasMeasurementLib {
         Pause,
         Unpause,
         EmergencyResetToFloor,
-        EmergencyResetToCash,
-        ClaimHookFees
+        EmergencyResetToCash
     }
 
     error UnsupportedGasOperation(string operation);
@@ -38,7 +37,6 @@ library GasMeasurementLib {
         if (id == keccak256("unpause")) return Operation.Unpause;
         if (id == keccak256("emergency_reset_to_floor")) return Operation.EmergencyResetToFloor;
         if (id == keccak256("emergency_reset_to_cash")) return Operation.EmergencyResetToCash;
-        if (id == keccak256("claim_hook_fees")) return Operation.ClaimHookFees;
 
         revert UnsupportedGasOperation(raw);
     }
@@ -54,8 +52,7 @@ library GasMeasurementLib {
         if (op == Operation.Pause) return "pause";
         if (op == Operation.Unpause) return "unpause";
         if (op == Operation.EmergencyResetToFloor) return "emergency_reset_to_floor";
-        if (op == Operation.EmergencyResetToCash) return "emergency_reset_to_cash";
-        return "claim_hook_fees";
+        return "emergency_reset_to_cash";
     }
 
     function updateEmaScaled(uint96 emaBeforeScaled, uint64 closeVolUsd6, uint8 emaPeriods)
@@ -91,8 +88,7 @@ library GasMeasurementLib {
         }
 
         uint256 denominator = uint256(emaPeriods) * 100 - uint256(passThresholdPct);
-        uint256 numerator =
-            uint256(passThresholdPct) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1);
+        uint256 numerator = uint256(passThresholdPct) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1);
         uint256 raw = numerator / (denominator * EMA_SCALE);
         if (numerator % (denominator * EMA_SCALE) != 0) {
             raw += 1;
@@ -122,9 +118,8 @@ library GasMeasurementLib {
         }
 
         uint256 denominator = uint256(emaPeriods) * 100 - uint256(passThresholdPct);
-        uint256 raw =
-            (uint256(passThresholdPct) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1))
-                / (denominator * EMA_SCALE);
+        uint256 raw = (uint256(passThresholdPct) * uint256(emaBeforeScaled) * uint256(emaPeriods - 1))
+            / (denominator * EMA_SCALE);
         if (raw > type(uint64).max) {
             raw = type(uint64).max;
         }
@@ -160,7 +155,11 @@ library GasMeasurementLib {
         closeVolUsd6 = uint64(candidate);
     }
 
-    function usd6ToStableRaw(uint64 amountUsd6, uint8 stableDecimals) internal pure returns (uint256 amountRaw) {
+    function usd6ToStableRaw(uint64 amountUsd6, uint8 stableDecimals)
+        internal
+        pure
+        returns (uint256 amountRaw)
+    {
         if (stableDecimals == 6) {
             return uint256(amountUsd6);
         }

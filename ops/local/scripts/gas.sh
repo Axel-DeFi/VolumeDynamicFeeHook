@@ -22,14 +22,26 @@ describe_operation() {
     close_one_period_cash_to_floor)
       printf '%s' 'One elapsed-period close; ordinary CASH -> FLOOR after hold exhaustion'
       ;;
-    close_gap_2_periods_cash_to_floor)
-      printf '%s' 'Close 2 missed periods; ordinary CASH -> FLOOR after hold is already exhausted'
+    close_one_period_cash_to_extreme)
+      printf '%s' 'One elapsed-period close; ordinary CASH -> EXTREME after confirm buildup'
+      ;;
+    close_one_period_extreme_to_cash)
+      printf '%s' 'One elapsed-period close; ordinary EXTREME -> CASH after hold exhaustion'
       ;;
     close_emergency_cash_to_floor)
       printf '%s' 'One measured close completes the low-volume emergency streak and resets CASH -> FLOOR'
       ;;
+    close_emergency_extreme_to_floor)
+      printf '%s' 'One measured close completes the low-volume emergency streak and resets EXTREME -> FLOOR'
+      ;;
     idle_reset)
       printf '%s' 'Idle-time reset to FLOOR after inactivity'
+      ;;
+    close_one_period_cash_hold_blocks_floor)
+      printf '%s' 'One elapsed-period close; hold blocks ordinary CASH -> FLOOR'
+      ;;
+    close_one_period_extreme_hold_blocks_cash)
+      printf '%s' 'One elapsed-period close; hold blocks ordinary EXTREME -> CASH'
       ;;
     close_gap_2_periods_no_transition)
       printf '%s' 'Close 2 missed periods; no fee-tier transition'
@@ -37,11 +49,38 @@ describe_operation() {
     close_gap_8_periods_no_transition)
       printf '%s' 'Close 8 missed periods; no fee-tier transition'
       ;;
-    close_gap_23_periods_no_transition)
-      printf '%s' 'Close 23 missed periods; no fee-tier transition'
+    close_gap_max_periods_no_transition)
+      printf '%s' 'Close max missed periods below idle-reset threshold; no fee-tier transition'
       ;;
     close_gap_2_periods_with_floor_to_cash)
       printf '%s' 'Close 2 missed periods; includes FLOOR -> CASH transition inside the gap close'
+      ;;
+    close_gap_2_periods_with_cash_to_floor)
+      printf '%s' 'Close 2 missed periods; includes ordinary CASH -> FLOOR transition inside the gap close'
+      ;;
+    close_gap_2_periods_with_cash_to_extreme)
+      printf '%s' 'Close 2 missed periods; includes CASH -> EXTREME transition inside the gap close'
+      ;;
+    close_gap_2_periods_with_extreme_to_cash)
+      printf '%s' 'Close 2 missed periods; includes ordinary EXTREME -> CASH transition inside the gap close'
+      ;;
+    close_gap_2_periods_with_emergency_cash_to_floor)
+      printf '%s' 'Close 2 missed periods; gap close completes the low-volume emergency CASH -> FLOOR reset'
+      ;;
+    close_gap_2_periods_with_emergency_extreme_to_floor)
+      printf '%s' 'Close 2 missed periods; gap close completes the low-volume emergency EXTREME -> FLOOR reset'
+      ;;
+    close_one_period_no_swaps_no_transition)
+      printf '%s' 'One elapsed-period close with no swaps; no fee-tier transition'
+      ;;
+    close_gap_2_periods_no_swaps_no_transition)
+      printf '%s' 'Close 2 missed no-swap periods; no fee-tier transition'
+      ;;
+    close_gap_2_periods_cash_hold_blocks_floor)
+      printf '%s' 'Close 2 missed periods; hold blocks ordinary CASH -> FLOOR during the gap close'
+      ;;
+    close_gap_2_periods_extreme_hold_blocks_cash)
+      printf '%s' 'Close 2 missed periods; hold blocks ordinary EXTREME -> CASH during the gap close'
       ;;
     *)
       printf '%s' 'Measured path'
@@ -76,13 +115,26 @@ append_scenario_summary() {
       close_one_period_no_transition \
       close_one_period_floor_to_cash \
       close_one_period_cash_to_floor \
-      close_gap_2_periods_cash_to_floor \
+      close_one_period_cash_to_extreme \
+      close_one_period_extreme_to_cash \
       close_emergency_cash_to_floor \
+      close_emergency_extreme_to_floor \
       idle_reset \
+      close_one_period_cash_hold_blocks_floor \
+      close_one_period_extreme_hold_blocks_cash \
       close_gap_2_periods_no_transition \
       close_gap_8_periods_no_transition \
-      close_gap_23_periods_no_transition \
-      close_gap_2_periods_with_floor_to_cash
+      close_gap_max_periods_no_transition \
+      close_gap_2_periods_with_floor_to_cash \
+      close_gap_2_periods_with_cash_to_floor \
+      close_gap_2_periods_with_cash_to_extreme \
+      close_gap_2_periods_with_extreme_to_cash \
+      close_gap_2_periods_with_emergency_cash_to_floor \
+      close_gap_2_periods_with_emergency_extreme_to_floor \
+      close_one_period_no_swaps_no_transition \
+      close_gap_2_periods_no_swaps_no_transition \
+      close_gap_2_periods_cash_hold_blocks_floor \
+      close_gap_2_periods_extreme_hold_blocks_cash
     do
       local avg_gas
       avg_gas="$(jq -r --arg op "${operation}" '.operations[] | select(.operation == $op) | .avgGasUsed' "${OPS_GAS_REPORT_JSON}")"

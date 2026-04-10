@@ -18,7 +18,6 @@ pause
 unpause
 emergency_reset_to_floor
 emergency_reset_to_cash
-claim_hook_fees
 EOF
 }
 

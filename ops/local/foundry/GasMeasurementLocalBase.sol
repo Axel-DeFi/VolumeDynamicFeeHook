@@ -189,8 +189,6 @@ abstract contract GasMeasurementLocalBase is CommonBase {
             hook.emergencyReset(hook.MODE_CASH());
             return;
         }
-
-        _measureClaimHookFees();
     }
 
     function _measureNormalSwap() internal {
@@ -232,11 +230,6 @@ abstract contract GasMeasurementLocalBase is CommonBase {
         vm.warp(block.timestamp + uint256(cfg.idleResetSeconds) + 1);
         _swapStable(_minCountedStableRaw());
         _assertMode(hook.MODE_FLOOR());
-    }
-
-    function _measureClaimHookFees() internal {
-        _swapStable(_seedStableRaw());
-        hook.claimHookFees();
     }
 
     function _moveToCash() internal {
@@ -300,7 +293,9 @@ abstract contract GasMeasurementLocalBase is CommonBase {
 
         _warpPeriod();
         _swapStable(
-            GasMeasurementLib.usd6ToStableRaw(_chooseNextDownOpenPeriodUsd6(downPassThreshold), cfg.stableDecimals)
+            GasMeasurementLib.usd6ToStableRaw(
+                _chooseNextDownOpenPeriodUsd6(downPassThreshold), cfg.stableDecimals
+            )
         );
         _assertMode(hook.MODE_CASH());
 
@@ -360,19 +355,20 @@ abstract contract GasMeasurementLocalBase is CommonBase {
     {
         (uint64 periodVol, uint96 emaScaled) = _periodVolAndEma();
         uint96 emaAfterClose = GasMeasurementLib.updateEmaScaled(emaScaled, periodVol, cfg.emaPeriods);
-        nextOpenUsd6 =
-            GasMeasurementLib.minUpPassCloseVolUsd6(emaAfterClose, cfg.emaPeriods, passThresholdPct, minCloseVolUsd6);
+        nextOpenUsd6 = GasMeasurementLib.minUpPassCloseVolUsd6(
+            emaAfterClose, cfg.emaPeriods, passThresholdPct, minCloseVolUsd6
+        );
     }
 
-    function _chooseNextDownOpenPeriodUsd6(uint16 passThresholdPct) internal view returns (uint64 nextOpenUsd6) {
+    function _chooseNextDownOpenPeriodUsd6(uint16 passThresholdPct)
+        internal
+        view
+        returns (uint64 nextOpenUsd6)
+    {
         (uint64 periodVol, uint96 emaScaled) = _periodVolAndEma();
         uint96 emaAfterClose = GasMeasurementLib.updateEmaScaled(emaScaled, periodVol, cfg.emaPeriods);
         nextOpenUsd6 = GasMeasurementLib.chooseDownPassCloseVolUsd6(
-            emaAfterClose,
-            cfg.emaPeriods,
-            passThresholdPct,
-            uint64(cfg.dustSwapThreshold),
-            cfg.lowVolumeReset
+            emaAfterClose, cfg.emaPeriods, passThresholdPct, uint64(cfg.dustSwapThreshold), cfg.lowVolumeReset
         );
     }
 

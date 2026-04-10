@@ -103,12 +103,6 @@ contract MeasureGasLive is LiveOpsBase {
             hook.emergencyReset(hook.MODE_CASH());
             return;
         }
-        if (operation == GasMeasurementLib.Operation.ClaimHookFees) {
-            _resetToFloorUnpaused();
-            _swapStableUsd6(_seedUsd6());
-            hook.claimHookFees();
-            return;
-        }
         if (operation == GasMeasurementLib.Operation.NormalSwap) {
             _resetToFloorUnpaused();
             _swapStableUsd6(_seedUsd6());
@@ -169,9 +163,7 @@ contract MeasureGasLive is LiveOpsBase {
 
     function _primeFloorToCash() internal {
         _swapStableUsd6(_seedUsd6());
-        _swapStableUsd6(
-            _chooseNextUpOpenPeriodUsd6(hook.enterCashEmaRatioPct(), hook.enterCashMinVolume())
-        );
+        _swapStableUsd6(_chooseNextUpOpenPeriodUsd6(hook.enterCashEmaRatioPct(), hook.enterCashMinVolume()));
         _assertMode(hook.MODE_FLOOR());
     }
 
@@ -229,7 +221,11 @@ contract MeasureGasLive is LiveOpsBase {
         );
     }
 
-    function _chooseNextDownOpenPeriodUsd6(uint16 passThresholdPct) internal view returns (uint64 nextOpenUsd6) {
+    function _chooseNextDownOpenPeriodUsd6(uint16 passThresholdPct)
+        internal
+        view
+        returns (uint64 nextOpenUsd6)
+    {
         (uint64 periodVol, uint96 emaScaled,,) = hook.unpackedState();
         uint96 emaAfterClose = GasMeasurementLib.updateEmaScaled(emaScaled, periodVol, hook.emaPeriods());
         nextOpenUsd6 = GasMeasurementLib.chooseDownPassCloseVolUsd6(

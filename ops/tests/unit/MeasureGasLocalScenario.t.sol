@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 
+import {ConfigLoader} from "../../shared/lib/ConfigLoader.sol";
+import {EnvLib} from "../../shared/lib/EnvLib.sol";
 import {GasMeasurementLib} from "../../shared/lib/GasMeasurementLib.sol";
 import {GasMeasurementLocalBase} from "../../local/foundry/GasMeasurementLocalBase.sol";
 import {OpsTypes} from "../../shared/types/OpsTypes.sol";
@@ -12,7 +14,11 @@ contract MeasureGasLocalScenarioTest is Test, GasMeasurementLocalBase {
         _setUpMeasurementEnv();
     }
 
-    function _loadMeasurementConfig() internal pure override returns (OpsTypes.CoreConfig memory cfg) {
+    function _loadMeasurementConfig() internal view override returns (OpsTypes.CoreConfig memory cfg) {
+        if (EnvLib.hasKey("DEPLOY_PERIOD_SECONDS") && EnvLib.hasKey("DEPLOY_STABLE")) {
+            return ConfigLoader.loadCoreConfig();
+        }
+
         cfg.runtime = OpsTypes.Runtime.Local;
         cfg.privateKey = 1;
         cfg.tickSpacing = 10;
@@ -58,14 +64,5 @@ contract MeasureGasLocalScenarioTest is Test, GasMeasurementLocalBase {
     function test_cashToFloor_measurement_path_ends_in_floor() public {
         _runOperation(GasMeasurementLib.Operation.CashToFloor);
         _assertMode(hook.MODE_FLOOR());
-    }
-
-    function test_claimHookFees_measurement_path_clears_accrued_balances() public {
-        vm.startPrank(vm.addr(1));
-        _runOperation(GasMeasurementLib.Operation.ClaimHookFees);
-        vm.stopPrank();
-        (uint256 fees0, uint256 fees1) = hook.hookFeesAccrued();
-        assertEq(fees0, 0);
-        assertEq(fees1, 0);
     }
 }
