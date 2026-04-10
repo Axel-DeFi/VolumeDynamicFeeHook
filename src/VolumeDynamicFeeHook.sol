@@ -173,6 +173,14 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint16 decisionBits;
     }
 
+    /// @notice Cached config subset for repeated zero-volume closes inside overdue catch-up loops.
+    struct ZeroVolumeLoopConfig {
+        uint8 emaPeriods;
+        uint8 lowVolumeResetPeriods;
+        uint8 exitExtremeConfirmPeriods;
+        uint8 exitCashConfirmPeriods;
+    }
+
     /// @notice Working context for the `_afterSwap` orchestrator.
     /// @dev Holds unpacked state fields and per-call temporaries to reduce stack depth
     ///      and enable clean decomposition into helper functions.
@@ -693,6 +701,12 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint24 floorFee_ = _config.floorFee;
         uint24 cashFee_ = _config.cashFee;
         uint24 extremeFee_ = _config.extremeFee;
+        ZeroVolumeLoopConfig memory zeroCfg = ZeroVolumeLoopConfig({
+            emaPeriods: _config.emaPeriods,
+            lowVolumeResetPeriods: _config.lowVolumeResetPeriods,
+            exitExtremeConfirmPeriods: _config.exitExtremeConfirmPeriods,
+            exitCashConfirmPeriods: _config.exitCashConfirmPeriods
+        });
 
         uint64 periods = ctx.elapsed / periodSeconds_;
         uint64 firstPeriodVolume = ctx.periodVolume;
@@ -709,16 +723,18 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint24 fromFee = _modeFeeFromCached(floorFee_, cashFee_, extremeFee_, f);
         uint64 closedPeriodStart = ctx.periodStart;
         uint64 periodVolume = firstPeriodVolume;
+        uint16 stateBitsBefore = _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
 
         for (uint64 i = 0; i < periods; ++i) {
-            uint16 stateBitsBefore =
-                _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
-
             uint8 fromFeeIdx = f;
-
-            (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory transition) =
-                _stepController(ema, f, periodVolume, hold, upStreak, down, emergency);
-            ema = emaAfter;
+            uint96 emaBefore = ema;
+            ControllerTransitionResult memory transition;
+            if (periodVolume == 0) {
+                (ema, emaBefore, transition) =
+                    _stepZeroVolumeController(zeroCfg, ema, f, hold, upStreak, down, emergency);
+            } else {
+                (ema, emaBefore, transition) = _stepController(ema, f, periodVolume, hold, upStreak, down, emergency);
+            }
             f = transition.feeIdx;
             hold = transition.holdRemaining;
             upStreak = transition.upExtremeStreak;
@@ -727,6 +743,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
             uint24 toFee =
                 f == fromFeeIdx ? fromFee : _modeFeeFromCached(floorFee_, cashFee_, extremeFee_, f);
+            uint16 stateBitsAfter = _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency);
 
             _emitPeriodTrace(
                 closedPeriodStart,
@@ -737,15 +754,16 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
                 periodVolume,
                 emaBefore,
                 ema,
-                _estimateApproxLpFeesUsd(periodVolume, fromFee),
+                periodVolume == 0 ? 0 : _estimateApproxLpFeesUsd(periodVolume, fromFee),
                 transition.decisionBits,
                 stateBitsBefore,
-                _packControllerTransitionCounters(ctx.paused, hold, upStreak, down, emergency),
+                stateBitsAfter,
                 transition.reasonCode
             );
 
             fromFee = toFee;
             periodVolume = 0;
+            stateBitsBefore = stateBitsAfter;
             unchecked {
                 closedPeriodStart += periodSeconds_;
             }
@@ -1718,6 +1736,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return current < maxValue ? current + 1 : maxValue;
     }
 
+    function _decayEmaScaled(uint96 emaScaled, uint8 emaPeriods_) internal pure returns (uint96) {
+        if (emaScaled == 0) return 0;
+
+        uint256 n = uint256(emaPeriods_);
+        return uint96((uint256(emaScaled) * (n - 1)) / n);
+    }
+
     /// @notice Runs one controller step: updates EMA and computes mode transition.
     /// @dev No state mutations; returns updated EMA and transition result.
     function _stepController(
@@ -1739,6 +1764,89 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         transition = _computeNextModeV2(
             feeIdx, periodVolume, emaAfter, bootstrapV2, holdRemaining, upExtremeStreak, downStreak, emergencyStreak
         );
+    }
+
+    /// @notice Runs one controller step for zero-volume closes in overdue catch-up loops using cached config.
+    /// @dev Preserves the exact controller semantics for `periodVolume == 0` while avoiding repeated storage reads.
+    function _stepZeroVolumeController(
+        ZeroVolumeLoopConfig memory cfg,
+        uint96 ema,
+        uint8 feeIdx,
+        uint8 holdRemaining,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    )
+        internal
+        pure
+        returns (uint96 emaAfter, uint96 emaBefore, ControllerTransitionResult memory result)
+    {
+        emaBefore = ema;
+        emaAfter = _decayEmaScaled(ema, cfg.emaPeriods);
+
+        result.feeIdx = feeIdx;
+        result.holdRemaining = holdRemaining;
+        result.upExtremeStreak = upExtremeStreak;
+        result.downStreak = downStreak;
+        result.emergencyStreak = emergencyStreak;
+        result.reasonCode = REASON_NO_SWAPS;
+
+        if (holdRemaining > 0) {
+            result.decisionBits |= TRACE_FLAG_HOLD_WAS_ACTIVE;
+        }
+
+        if (result.holdRemaining > 0) {
+            unchecked {
+                result.holdRemaining -= 1;
+            }
+        }
+
+        result.emergencyStreak = _incrementStreak(result.emergencyStreak, MAX_EMERGENCY_STREAK);
+
+        if (result.emergencyStreak >= cfg.lowVolumeResetPeriods && result.feeIdx != MODE_FLOOR) {
+            result.feeIdx = MODE_FLOOR;
+            result.holdRemaining = 0;
+            result.upExtremeStreak = 0;
+            result.downStreak = 0;
+            result.emergencyStreak = 0;
+            result.reasonCode = REASON_EMERGENCY_FLOOR;
+            result.decisionBits |= TRACE_FLAG_EMERGENCY_TRIGGERED;
+            return (emaAfter, emaBefore, result);
+        }
+
+        if (result.feeIdx == MODE_CASH) {
+            result.decisionBits |= TRACE_FLAG_CASH_EXIT_TRIGGER;
+        } else if (result.feeIdx == MODE_EXTREME) {
+            result.decisionBits |= TRACE_FLAG_EXTREME_EXIT_TRIGGER;
+        }
+
+        result.upExtremeStreak = 0;
+
+        if (result.holdRemaining > 0) {
+            result.downStreak = 0;
+            result.reasonCode = REASON_HOLD;
+            return (emaAfter, emaBefore, result);
+        }
+
+        if (result.feeIdx == MODE_EXTREME) {
+            result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
+            if (result.downStreak >= cfg.exitExtremeConfirmPeriods) {
+                result.downStreak = 0;
+                result.feeIdx = MODE_CASH;
+                result.reasonCode = REASON_DOWN_TO_CASH;
+                return (emaAfter, emaBefore, result);
+            }
+        } else if (result.feeIdx == MODE_CASH) {
+            result.downStreak = _incrementStreak(result.downStreak, MAX_DOWN_STREAK);
+            if (result.downStreak >= cfg.exitCashConfirmPeriods) {
+                result.downStreak = 0;
+                result.feeIdx = MODE_FLOOR;
+                result.reasonCode = REASON_DOWN_TO_FLOOR;
+                return (emaAfter, emaBefore, result);
+            }
+        } else {
+            result.downStreak = 0;
+        }
     }
 
     /// @notice Computes the next LP-fee mode and transition counters for a closed period.
