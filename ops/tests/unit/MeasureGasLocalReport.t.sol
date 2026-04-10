@@ -13,6 +13,7 @@ import {OpsTypes} from "../../shared/types/OpsTypes.sol";
 contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     enum Scenario {
         NormalSwap,
+        ClaimHookFeesOneChunk,
         CloseOnePeriodNoTransition,
         CloseOnePeriodFloorToCash,
         CloseOnePeriodCashToFloor,
@@ -33,7 +34,9 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         CloseGap2PeriodsWithEmergencyCashToFloor,
         CloseGap2PeriodsWithEmergencyExtremeToFloor,
         CloseOnePeriodNoSwapsNoTransition,
+        CloseOnePeriodNoSwapsSeeded,
         CloseGap2PeriodsNoSwapsNoTransition,
+        CloseGap2PeriodsNoSwapsSeeded,
         CloseGap2PeriodsCashHoldBlocksFloor,
         CloseGap2PeriodsExtremeHoldBlocksCash
     }
@@ -43,6 +46,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         uint256 traceCount;
         uint256 idleResetCount;
         uint256 feeUpdatedCount;
+        uint256 claimCount;
     }
 
     struct ReasonCounts {
@@ -60,6 +64,9 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
     struct CounterSnapshot {
         uint256 updateBefore;
+        uint256 unlockBefore;
+        uint256 burnBefore;
+        uint256 takeBefore;
     }
 
     struct StateSnapshot {
@@ -128,6 +135,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     );
     bytes32 internal constant IDLE_RESET_SIG = keccak256("IdleReset(uint24,uint8)");
     bytes32 internal constant FEE_UPDATED_SIG = keccak256("FeeUpdated(uint24,uint8,uint64,uint96)");
+    bytes32 internal constant HOOK_FEES_CLAIMED_SIG = keccak256("HookFeesClaimed(address,uint256,uint256)");
 
     function _loadMeasurementConfig() internal view override returns (OpsTypes.CoreConfig memory cfg) {
         if (EnvLib.hasKey("DEPLOY_PERIOD_SECONDS") && EnvLib.hasKey("DEPLOY_STABLE")) {
@@ -163,6 +171,10 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
     function testGas_normal_swap() public {
         _runMeasuredScenario(Scenario.NormalSwap);
+    }
+
+    function testGas_claim_hook_fees_one_chunk() public {
+        _runMeasuredScenario(Scenario.ClaimHookFeesOneChunk);
     }
 
     function testGas_close_one_period_no_transition() public {
@@ -245,8 +257,16 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         _runMeasuredScenario(Scenario.CloseOnePeriodNoSwapsNoTransition);
     }
 
+    function testGas_close_one_period_no_swaps_seeded() public {
+        _runMeasuredScenario(Scenario.CloseOnePeriodNoSwapsSeeded);
+    }
+
     function testGas_close_gap_2_periods_no_swaps_no_transition() public {
         _runMeasuredScenario(Scenario.CloseGap2PeriodsNoSwapsNoTransition);
+    }
+
+    function testGas_close_gap_2_periods_no_swaps_seeded() public {
+        _runMeasuredScenario(Scenario.CloseGap2PeriodsNoSwapsSeeded);
     }
 
     function testGas_close_gap_2_periods_cash_hold_blocks_floor() public {
@@ -261,12 +281,24 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         vm.pauseGasMetering();
         _setUpScenario(scenario);
         StateSnapshot memory beforeState = _captureState();
-        CounterSnapshot memory snapshot = CounterSnapshot({updateBefore: manager.updateCount()});
+        CounterSnapshot memory snapshot = CounterSnapshot({
+            updateBefore: manager.updateCount(),
+            unlockBefore: manager.unlockCount(),
+            burnBefore: manager.burnCount(),
+            takeBefore: manager.takeCount()
+        });
+        bool ownerOp = _requiresOwnerPrank(scenario);
 
         vm.recordLogs();
+        if (ownerOp) {
+            vm.startPrank(vm.addr(cfg.privateKey));
+        }
         vm.resumeGasMetering();
         _executeScenario(scenario);
         vm.pauseGasMetering();
+        if (ownerOp) {
+            vm.stopPrank();
+        }
 
         StateSnapshot memory afterState = _captureState();
         _assertScenario(scenario, beforeState, afterState, vm.getRecordedLogs(), snapshot);
@@ -277,6 +309,19 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
         if (scenario == Scenario.NormalSwap) {
             _swapStable(_minCountedStableRaw());
+            return;
+        }
+
+        if (scenario == Scenario.ClaimHookFeesOneChunk) {
+            _swapStable(_minCountedStableRaw());
+            (uint256 fees0, uint256 fees1) = hook.hookFeesAccrued();
+            uint256 totalClaim = fees0 + fees1;
+            assertGt(totalClaim, 0, "one-chunk claim setup must accrue HookFee");
+            assertLe(
+                totalClaim,
+                uint256(uint128(type(int128).max)),
+                "one-chunk claim setup must stay below PoolManager chunk limit"
+            );
             return;
         }
 
@@ -385,8 +430,18 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             return;
         }
 
+        if (scenario == Scenario.CloseOnePeriodNoSwapsSeeded) {
+            _prepareNoSwapsSeededGapClose(1);
+            return;
+        }
+
         if (scenario == Scenario.CloseGap2PeriodsNoSwapsNoTransition) {
             _prepareNoSwapsGapClose(GAP_2_PERIODS);
+            return;
+        }
+
+        if (scenario == Scenario.CloseGap2PeriodsNoSwapsSeeded) {
+            _prepareNoSwapsSeededGapClose(GAP_2_PERIODS);
             return;
         }
 
@@ -402,6 +457,11 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     }
 
     function _executeScenario(Scenario scenario) internal {
+        if (scenario == Scenario.ClaimHookFeesOneChunk) {
+            hook.claimHookFees();
+            return;
+        }
+
         _swapStable(_measuredSwapAmountStableRaw(scenario));
     }
 
@@ -421,6 +481,28 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             periods * uint64(cfg.periodSeconds) < uint64(cfg.idleResetSeconds),
             "no-swaps gap crosses idle reset"
         );
+        _warpPeriods(periods);
+    }
+
+    function _prepareNoSwapsSeededGapClose(uint64 periods) internal {
+        require(periods > 0, "seeded no-swaps periods too small");
+        require(
+            periods * uint64(cfg.periodSeconds) < uint64(cfg.idleResetSeconds),
+            "seeded no-swaps gap crosses idle reset"
+        );
+
+        _swapStable(_seedStableRaw());
+        _warpPeriods(1);
+        _swapStable(_minCountedStableRaw());
+
+        _warpPeriods(1);
+        _swapStable(_dustStableRaw());
+
+        StateSnapshot memory warmed = _captureState();
+        assertEq(warmed.feeIdx, hook.MODE_FLOOR(), "seeded no-swaps setup must stay in floor");
+        assertEq(warmed.periodVolume, 0, "seeded no-swaps setup must reopen an empty period");
+        assertGt(warmed.emaVolumeScaled, 0, "seeded no-swaps setup must warm EMA before the measured close");
+
         _warpPeriods(periods);
     }
 
@@ -819,6 +901,11 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
     }
 
+    function _dustStableRaw() internal view returns (uint256) {
+        require(cfg.dustSwapThreshold > 1, "dust threshold too small for seeded no-swaps setup");
+        return GasMeasurementLib.usd6ToStableRaw(uint64(cfg.dustSwapThreshold - 1), cfg.stableDecimals);
+    }
+
     function _measuredSwapAmountStableRaw(Scenario scenario) internal view returns (uint256) {
         if (
             scenario == Scenario.CloseOnePeriodCashToFloor
@@ -860,6 +947,11 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
         if (scenario == Scenario.NormalSwap) {
             _assertNormalSwap(capture.counts, snapshot);
+            return;
+        }
+
+        if (scenario == Scenario.ClaimHookFeesOneChunk) {
+            _assertClaimHookFeesOneChunk(capture.counts, snapshot);
             return;
         }
 
@@ -959,8 +1051,18 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             return;
         }
 
+        if (scenario == Scenario.CloseOnePeriodNoSwapsSeeded) {
+            _assertCloseOnePeriodNoSwapsSeeded(beforeState, afterState, capture, snapshot);
+            return;
+        }
+
         if (scenario == Scenario.CloseGap2PeriodsNoSwapsNoTransition) {
             _assertCloseGap2PeriodsNoSwapsNoTransition(beforeState, afterState, capture, snapshot);
+            return;
+        }
+
+        if (scenario == Scenario.CloseGap2PeriodsNoSwapsSeeded) {
+            _assertCloseGap2PeriodsNoSwapsSeeded(beforeState, afterState, capture, snapshot);
             return;
         }
 
@@ -978,10 +1080,26 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(counts.traceCount, 0, "normal swap must not emit a transition trace");
         assertEq(counts.idleResetCount, 0, "normal swap must not idle reset");
         assertEq(counts.feeUpdatedCount, 0, "normal swap must not update LP fee");
+        assertEq(counts.claimCount, 0, "normal swap must not claim HookFee");
         assertEq(periodVolume, _minCountedUsd6() * 2, "normal swap must append volume inside the open period");
         assertEq(feeIdx, hook.MODE_FLOOR(), "normal swap baseline must stay in floor");
         assertGt(periodStart, 0, "normal swap must keep an initialized period start");
         assertEq(manager.updateCount(), snapshot.updateBefore, "normal swap must not change LP fee");
+    }
+
+    function _assertClaimHookFeesOneChunk(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
+        (uint256 fees0After, uint256 fees1After) = hook.hookFeesAccrued();
+        assertEq(counts.periodClosedCount, 0, "one-chunk claim must not close a period");
+        assertEq(counts.traceCount, 0, "one-chunk claim must not emit transition traces");
+        assertEq(counts.idleResetCount, 0, "one-chunk claim must not idle reset");
+        assertEq(counts.feeUpdatedCount, 0, "one-chunk claim must not update LP fee");
+        assertEq(counts.claimCount, 1, "one-chunk claim must emit HookFeesClaimed once");
+        assertEq(fees0After, 0, "one-chunk claim must clear token0 accrual");
+        assertEq(fees1After, 0, "one-chunk claim must clear token1 accrual");
+        assertEq(manager.updateCount(), snapshot.updateBefore, "one-chunk claim must not change LP fee");
+        assertEq(manager.unlockCount(), snapshot.unlockBefore + 1, "one-chunk claim must unlock once");
+        assertEq(manager.burnCount(), snapshot.burnBefore + 1, "one-chunk claim must burn exactly one chunk");
+        assertEq(manager.takeCount(), snapshot.takeBefore + 1, "one-chunk claim must take exactly one chunk");
     }
 
     function _assertCloseOnePeriodNoTransition(
@@ -1716,6 +1834,41 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(manager.updateCount(), snapshot.updateBefore, "no-swaps path must not change LP fee");
     }
 
+    function _assertCloseOnePeriodNoSwapsSeeded(
+        StateSnapshot memory beforeState,
+        StateSnapshot memory afterState,
+        ScenarioLogCapture memory capture,
+        CounterSnapshot memory snapshot
+    ) internal view {
+        assertEq(beforeState.feeIdx, hook.MODE_FLOOR(), "seeded no-swaps path must start in floor");
+        assertEq(beforeState.periodVolume, 0, "seeded no-swaps path must start from an empty open period");
+        assertGt(beforeState.emaVolumeScaled, 0, "seeded no-swaps path must start from a warmed EMA");
+
+        assertEq(
+            capture.counts.periodClosedCount, 1, "seeded no-swaps path must close exactly one elapsed period"
+        );
+        assertEq(capture.counts.traceCount, 1, "seeded no-swaps path must emit one trace");
+        assertEq(capture.counts.idleResetCount, 0, "seeded no-swaps path must not idle reset");
+        assertEq(capture.counts.feeUpdatedCount, 0, "seeded no-swaps path must not change LP fee");
+        assertEq(capture.traceReasons.noSwaps, 1, "seeded no-swaps path must use the no-swaps reason");
+        assertEq(capture.traceReasons.emaBootstrap, 0, "seeded no-swaps path must not re-bootstrap EMA");
+        assertEq(capture.traceReasons.emergencyFloor, 0, "seeded no-swaps path must not use emergency reset");
+
+        assertEq(afterState.feeIdx, hook.MODE_FLOOR(), "seeded no-swaps path must stay in floor");
+        assertLt(
+            afterState.emaVolumeScaled,
+            beforeState.emaVolumeScaled,
+            "seeded no-swaps path must decay the warmed EMA on the empty close"
+        );
+        assertGt(afterState.emaVolumeScaled, 0, "seeded no-swaps path must keep EMA warmed after the empty close");
+        assertEq(
+            afterState.periodVolume,
+            _minCountedUsd6(),
+            "seeded no-swaps path must count the current swap into the fresh period"
+        );
+        assertEq(manager.updateCount(), snapshot.updateBefore, "seeded no-swaps path must not change LP fee");
+    }
+
     function _assertCloseGap2PeriodsNoSwapsNoTransition(
         StateSnapshot memory beforeState,
         StateSnapshot memory afterState,
@@ -1747,6 +1900,53 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             "gap no-swaps path must count the current swap into the fresh period"
         );
         assertEq(manager.updateCount(), snapshot.updateBefore, "gap no-swaps path must not change LP fee");
+    }
+
+    function _assertCloseGap2PeriodsNoSwapsSeeded(
+        StateSnapshot memory beforeState,
+        StateSnapshot memory afterState,
+        ScenarioLogCapture memory capture,
+        CounterSnapshot memory snapshot
+    ) internal view {
+        assertEq(beforeState.feeIdx, hook.MODE_FLOOR(), "seeded gap no-swaps path must start in floor");
+        assertEq(beforeState.periodVolume, 0, "seeded gap no-swaps path must start from an empty open period");
+        assertGt(beforeState.emaVolumeScaled, 0, "seeded gap no-swaps path must start from a warmed EMA");
+
+        assertEq(
+            capture.counts.periodClosedCount,
+            GAP_2_PERIODS,
+            "seeded gap no-swaps path must close two missed periods"
+        );
+        assertEq(capture.counts.traceCount, GAP_2_PERIODS, "seeded gap no-swaps path must emit two traces");
+        assertEq(capture.counts.idleResetCount, 0, "seeded gap no-swaps path must not idle reset");
+        assertEq(capture.counts.feeUpdatedCount, 0, "seeded gap no-swaps path must not change LP fee");
+        assertEq(
+            capture.traceReasons.noSwaps,
+            GAP_2_PERIODS,
+            "seeded gap no-swaps path must use no-swaps for both missed periods"
+        );
+        assertEq(
+            capture.traceReasons.emaBootstrap, 0, "seeded gap no-swaps path must not re-bootstrap EMA"
+        );
+        assertEq(capture.traceReasons.emergencyFloor, 0, "seeded gap no-swaps path must not use emergency reset");
+
+        assertEq(afterState.feeIdx, hook.MODE_FLOOR(), "seeded gap no-swaps path must stay in floor");
+        assertLt(
+            afterState.emaVolumeScaled,
+            beforeState.emaVolumeScaled,
+            "seeded gap no-swaps path must decay the warmed EMA over the missed periods"
+        );
+        assertGt(
+            afterState.emaVolumeScaled,
+            0,
+            "seeded gap no-swaps path must keep EMA non-zero after the measured gap close"
+        );
+        assertEq(
+            afterState.periodVolume,
+            _minCountedUsd6(),
+            "seeded gap no-swaps path must count the current swap into the fresh period"
+        );
+        assertEq(manager.updateCount(), snapshot.updateBefore, "seeded gap no-swaps path must not change LP fee");
     }
 
     function _assertCloseGap2PeriodsCashHoldBlocksFloor(
@@ -1926,6 +2126,11 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
                 capture.counts.feeUpdatedCount += 1;
                 continue;
             }
+
+            if (topic0 == HOOK_FEES_CLAIMED_SIG) {
+                capture.counts.claimCount += 1;
+                continue;
+            }
         }
     }
 
@@ -1999,6 +2204,10 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         if (scenario == Scenario.CloseGap8PeriodsNoTransition) return GAP_8_PERIODS;
         if (scenario == Scenario.CloseGapMaxPeriodsNoTransition) return _maxGapPeriods();
         return 0;
+    }
+
+    function _requiresOwnerPrank(Scenario scenario) internal pure returns (bool) {
+        return scenario == Scenario.ClaimHookFeesOneChunk;
     }
 
     function _maxGapPeriods() internal view returns (uint64 periods) {

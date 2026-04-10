@@ -13,6 +13,9 @@ describe_operation() {
     normal_swap)
       printf '%s' 'Warm swap inside an open period; no close, no reset, no fee-tier change'
       ;;
+    claim_hook_fees_one_chunk)
+      printf '%s' 'Full HookFee claim settled in one PoolManager chunk'
+      ;;
     close_one_period_no_transition)
       printf '%s' 'One elapsed-period close; no fee-tier transition'
       ;;
@@ -73,8 +76,14 @@ describe_operation() {
     close_one_period_no_swaps_no_transition)
       printf '%s' 'One elapsed-period close with no swaps; no fee-tier transition'
       ;;
+    close_one_period_no_swaps_seeded)
+      printf '%s' 'One elapsed-period close with no swaps; starts from a seeded open-period baseline'
+      ;;
     close_gap_2_periods_no_swaps_no_transition)
       printf '%s' 'Close 2 missed no-swap periods; no fee-tier transition'
+      ;;
+    close_gap_2_periods_no_swaps_seeded)
+      printf '%s' 'Close 2 missed no-swap periods; starts from a seeded open-period baseline'
       ;;
     close_gap_2_periods_cash_hold_blocks_floor)
       printf '%s' 'Close 2 missed periods; hold blocks ordinary CASH -> FLOOR during the gap close'
@@ -112,6 +121,7 @@ append_scenario_summary() {
 
     for operation in \
       normal_swap \
+      claim_hook_fees_one_chunk \
       close_one_period_no_transition \
       close_one_period_floor_to_cash \
       close_one_period_cash_to_floor \
@@ -132,7 +142,9 @@ append_scenario_summary() {
       close_gap_2_periods_with_emergency_cash_to_floor \
       close_gap_2_periods_with_emergency_extreme_to_floor \
       close_one_period_no_swaps_no_transition \
+      close_one_period_no_swaps_seeded \
       close_gap_2_periods_no_swaps_no_transition \
+      close_gap_2_periods_no_swaps_seeded \
       close_gap_2_periods_cash_hold_blocks_floor \
       close_gap_2_periods_extreme_hold_blocks_cash
     do
