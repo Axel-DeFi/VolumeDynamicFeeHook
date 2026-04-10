@@ -10,47 +10,38 @@ gas_setup_paths "${OPS_LOCAL_DIR}" "local"
 
 describe_operation() {
   case "$1" in
-    normal_swap_in_period)
-      printf '%s' 'Warm in-period swap; no close, no idle reset, no fee-tier change'
+    normal_swap)
+      printf '%s' 'Warm swap inside an open period; no close, no reset, no fee-tier change'
       ;;
-    single_period_close)
+    close_one_period_no_transition)
       printf '%s' 'One elapsed-period close; no fee-tier transition'
       ;;
-    single_period_close_with_fee_change)
+    close_one_period_floor_to_cash)
       printf '%s' 'One elapsed-period close; FLOOR -> CASH transition with LP fee sync'
       ;;
-    cash_to_floor_normal_immediate)
-      printf '%s' 'One elapsed-period close; ordinary CASH -> FLOOR right after hold exhaustion'
+    close_one_period_cash_to_floor)
+      printf '%s' 'One elapsed-period close; ordinary CASH -> FLOOR after hold exhaustion'
       ;;
-    cash_to_floor_normal_after_gap)
-      printf '%s' 'Catch-up over 2 overdue weak periods; ordinary CASH -> FLOOR after short gap'
+    close_gap_2_periods_cash_to_floor)
+      printf '%s' 'Close 2 missed periods; ordinary CASH -> FLOOR after hold is already exhausted'
       ;;
-    cash_to_floor_emergency)
-      printf '%s' 'One elapsed-period close; emergency low-volume CASH -> FLOOR reset'
+    close_emergency_cash_to_floor)
+      printf '%s' 'One measured close completes the low-volume emergency streak and resets CASH -> FLOOR'
       ;;
     idle_reset)
-      printf '%s' 'Idle reset branch after inactivity threshold'
+      printf '%s' 'Idle-time reset to FLOOR after inactivity'
       ;;
-    catch_up_small)
-      printf '%s' 'Catch-up over 2 overdue periods; no fee-tier transition'
+    close_gap_2_periods_no_transition)
+      printf '%s' 'Close 2 missed periods; no fee-tier transition'
       ;;
-    catch_up_large)
-      printf '%s' 'Catch-up over 8 overdue periods; no fee-tier transition'
+    close_gap_8_periods_no_transition)
+      printf '%s' 'Close 8 missed periods; no fee-tier transition'
       ;;
-    catch_up_worst)
-      printf '%s' 'Catch-up over 23 overdue periods; no fee-tier transition'
+    close_gap_23_periods_no_transition)
+      printf '%s' 'Close 23 missed periods; no fee-tier transition'
       ;;
-    catch_up_with_fee_change)
-      printf '%s' 'Catch-up over 2 overdue periods; first close transitions FLOOR -> CASH'
-      ;;
-    claim_hook_fees_normal)
-      printf '%s' 'Full claim settled in one PoolManager chunk'
-      ;;
-    claim_hook_fees_chunked)
-      printf '%s' 'Full claim settled in exactly 2 PoolManager chunks'
-      ;;
-    claim_hook_fees_chunked_multi)
-      printf '%s' 'Full claim settled in exactly 3 PoolManager chunks'
+    close_gap_2_periods_with_floor_to_cash)
+      printf '%s' 'Close 2 missed periods; includes FLOOR -> CASH transition inside the gap close'
       ;;
     *)
       printf '%s' 'Measured path'
@@ -73,7 +64,7 @@ format_vs_baseline() {
 
 append_scenario_summary() {
   local baseline_avg
-  baseline_avg="$(jq -r '.operations[] | select(.operation == "normal_swap_in_period") | .avgGasUsed' "${OPS_GAS_REPORT_JSON}")"
+  baseline_avg="$(jq -r '.operations[] | select(.operation == "normal_swap") | .avgGasUsed' "${OPS_GAS_REPORT_JSON}")"
 
   {
     printf '\n## Scenario Summary\n\n'
@@ -81,20 +72,17 @@ append_scenario_summary() {
     printf '|---|---|---:|---:|\n'
 
     for operation in \
-      normal_swap_in_period \
-      single_period_close \
-      single_period_close_with_fee_change \
-      cash_to_floor_normal_immediate \
-      cash_to_floor_normal_after_gap \
-      cash_to_floor_emergency \
+      normal_swap \
+      close_one_period_no_transition \
+      close_one_period_floor_to_cash \
+      close_one_period_cash_to_floor \
+      close_gap_2_periods_cash_to_floor \
+      close_emergency_cash_to_floor \
       idle_reset \
-      catch_up_small \
-      catch_up_large \
-      catch_up_worst \
-      catch_up_with_fee_change \
-      claim_hook_fees_normal \
-      claim_hook_fees_chunked \
-      claim_hook_fees_chunked_multi
+      close_gap_2_periods_no_transition \
+      close_gap_8_periods_no_transition \
+      close_gap_23_periods_no_transition \
+      close_gap_2_periods_with_floor_to_cash
     do
       local avg_gas
       avg_gas="$(jq -r --arg op "${operation}" '.operations[] | select(.operation == $op) | .avgGasUsed' "${OPS_GAS_REPORT_JSON}")"
