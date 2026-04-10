@@ -162,7 +162,7 @@ append_scenario_summary() {
   } >> "${OPS_GAS_REPORT_MD}"
 }
 
-runs="${OPS_GAS_RUNS:-5}"
+runs="${OPS_GAS_RUNS:-10}"
 chain_id="${CHAIN_ID_EXPECTED:-31337}"
 report_test_path='ops/tests/unit/MeasureGasLocalReport.t.sol'
 timing_path="${OPS_LOCAL_DIR}/out/reports/gas.local.timing.json"
