@@ -15,6 +15,7 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {VolumeDynamicFeeHook} from "src/VolumeDynamicFeeHook.sol";
 import {MockPoolManager} from "../../tests/mocks/MockPoolManager.sol";
 import {ConfigLoader} from "../../shared/lib/ConfigLoader.sol";
+import {EnvLib} from "../../shared/lib/EnvLib.sol";
 import {GasMeasurementLib} from "../../shared/lib/GasMeasurementLib.sol";
 import {OpsTypes} from "../../shared/types/OpsTypes.sol";
 
@@ -138,6 +139,20 @@ abstract contract GasMeasurementLocalBase is CommonBase {
 
     function _loadMeasurementConfig() internal view virtual returns (OpsTypes.CoreConfig memory) {
         return ConfigLoader.loadCoreConfig();
+    }
+
+    function _shouldLoadEnvMeasurementConfig() internal view returns (bool) {
+        return
+            keccak256(bytes(EnvLib.envOrString("OPS_RUNTIME", ""))) == keccak256(bytes("local"))
+            && EnvLib.hasKey("PRIVATE_KEY") && EnvLib.hasKey("DEPLOY_PERIOD_SECONDS")
+            && EnvLib.hasKey("DEPLOY_STABLE");
+    }
+
+    function _measurementOwner() internal view returns (address) {
+        if (cfg.privateKey != 0) {
+            return vm.addr(cfg.privateKey);
+        }
+        return cfg.owner;
     }
 
     function _runOperation(GasMeasurementLib.Operation op) internal {

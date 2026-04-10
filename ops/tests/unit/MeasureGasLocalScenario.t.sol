@@ -15,7 +15,7 @@ contract MeasureGasLocalScenarioTest is Test, GasMeasurementLocalBase {
     }
 
     function _loadMeasurementConfig() internal view override returns (OpsTypes.CoreConfig memory cfg) {
-        if (EnvLib.hasKey("DEPLOY_PERIOD_SECONDS") && EnvLib.hasKey("DEPLOY_STABLE")) {
+        if (_shouldLoadEnvMeasurementConfig()) {
             return ConfigLoader.loadCoreConfig();
         }
 

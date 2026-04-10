@@ -138,7 +138,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     bytes32 internal constant HOOK_FEES_CLAIMED_SIG = keccak256("HookFeesClaimed(address,uint256,uint256)");
 
     function _loadMeasurementConfig() internal view override returns (OpsTypes.CoreConfig memory cfg) {
-        if (EnvLib.hasKey("DEPLOY_PERIOD_SECONDS") && EnvLib.hasKey("DEPLOY_STABLE")) {
+        if (_shouldLoadEnvMeasurementConfig()) {
             return ConfigLoader.loadCoreConfig();
         }
 
@@ -291,7 +291,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
         vm.recordLogs();
         if (ownerOp) {
-            vm.startPrank(vm.addr(cfg.privateKey));
+            vm.startPrank(_measurementOwner());
         }
         vm.resumeGasMetering();
         _executeScenario(scenario);
