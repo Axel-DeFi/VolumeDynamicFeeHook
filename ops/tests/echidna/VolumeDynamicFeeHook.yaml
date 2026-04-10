@@ -1,0 +1,6 @@
+testMode: property
+seqLen: 100
+testLimit: 50000
+shrinkLimit: 2000
+maxTimeDelay: 300000
+maxBlockDelay: 1000

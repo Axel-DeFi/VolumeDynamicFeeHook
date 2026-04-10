@@ -25,6 +25,16 @@ contract VolumeDynamicFeeHookHarness {
     uint8 public constant MODE_CASH = 1;
     uint8 public constant MODE_EXTREME = 2;
 
+    uint8 public constant REASON_NO_SWAPS = 7;
+    uint8 public constant REASON_EMA_BOOTSTRAP = 10;
+    uint8 public constant REASON_JUMP_CASH = 11;
+    uint8 public constant REASON_JUMP_EXTREME = 12;
+    uint8 public constant REASON_DOWN_TO_CASH = 13;
+    uint8 public constant REASON_DOWN_TO_FLOOR = 14;
+    uint8 public constant REASON_HOLD = 15;
+    uint8 public constant REASON_EMERGENCY_FLOOR = 16;
+    uint8 public constant REASON_NO_CHANGE = 17;
+
     // Bit-packing layout.
     uint256 private constant PAUSED_BIT = 232;
     uint256 private constant HOLD_REMAINING_SHIFT = 233;
@@ -63,6 +73,17 @@ contract VolumeDynamicFeeHookHarness {
         uint8 emergencyStreak;
         uint8 reasonCode;
         uint16 decisionBits;
+    }
+
+    struct IdleResetResult {
+        uint8 feeIdx;
+        bool paused;
+        uint8 holdRemaining;
+        uint8 upExtremeStreak;
+        uint8 downStreak;
+        uint8 emergencyStreak;
+        uint96 emaVolScaled;
+        uint64 periodVolume;
     }
 
     // -----------------------------------------------------------------------
@@ -144,6 +165,43 @@ contract VolumeDynamicFeeHookHarness {
         return cfg;
     }
 
+    function modeFee(uint24 floorFee, uint24 cashFee, uint24 extremeFee, uint8 feeIdx)
+        public
+        pure
+        returns (uint24)
+    {
+        if (feeIdx == MODE_FLOOR) return floorFee;
+        if (feeIdx == MODE_CASH) return cashFee;
+        if (feeIdx == MODE_EXTREME) return extremeFee;
+        revert("bad feeIdx");
+    }
+
+    function clampHoldForSettings(uint8 feeIdx, uint8 holdRemaining, uint8 holdCashPeriods, uint8 holdExtremePeriods)
+        public
+        pure
+        returns (uint8)
+    {
+        uint8 maxHold = feeIdx == MODE_CASH ? holdCashPeriods : feeIdx == MODE_EXTREME ? holdExtremePeriods : 0;
+        return holdRemaining > maxHold ? maxHold : holdRemaining;
+    }
+
+    function applyIdleReset(uint8 currentFeeIdx, bool paused, uint64 currentSwapVolume)
+        public
+        pure
+        returns (IdleResetResult memory result)
+    {
+        currentFeeIdx;
+
+        result.feeIdx = MODE_FLOOR;
+        result.paused = paused;
+        result.holdRemaining = 0;
+        result.upExtremeStreak = 0;
+        result.downStreak = 0;
+        result.emergencyStreak = 0;
+        result.emaVolScaled = 0;
+        result.periodVolume = currentSwapVolume;
+    }
+
     function _incrementStreak(uint8 current, uint8 maxValue) internal pure returns (uint8) {
         return current < maxValue ? current + 1 : maxValue;
     }
@@ -163,7 +221,7 @@ contract VolumeDynamicFeeHookHarness {
         result.upExtremeStreak = upExtremeStreak;
         result.downStreak = downStreak;
         result.emergencyStreak = emergencyStreak;
-        result.reasonCode = closeVol == 0 ? 1 : 2; // REASON_NO_SWAPS / REASON_NO_CHANGE
+        result.reasonCode = closeVol == 0 ? REASON_NO_SWAPS : REASON_NO_CHANGE;
 
         if (result.holdRemaining > 0) {
             unchecked {
@@ -183,6 +241,7 @@ contract VolumeDynamicFeeHookHarness {
             result.upExtremeStreak = 0;
             result.downStreak = 0;
             result.emergencyStreak = 0;
+            result.reasonCode = REASON_EMERGENCY_FLOOR;
             return result;
         }
 
@@ -199,6 +258,7 @@ contract VolumeDynamicFeeHookHarness {
                 result.upExtremeStreak = 0;
                 result.downStreak = 0;
                 result.emergencyStreak = 0;
+                result.reasonCode = REASON_JUMP_CASH;
                 return result;
             }
         }
@@ -221,6 +281,7 @@ contract VolumeDynamicFeeHookHarness {
                 result.upExtremeStreak = 0;
                 result.downStreak = 0;
                 result.emergencyStreak = 0;
+                result.reasonCode = REASON_JUMP_EXTREME;
                 return result;
             }
         } else {
@@ -230,6 +291,7 @@ contract VolumeDynamicFeeHookHarness {
         // Hold protection.
         if (result.holdRemaining > 0) {
             result.downStreak = 0;
+            result.reasonCode = REASON_HOLD;
             return result;
         }
 
@@ -245,6 +307,7 @@ contract VolumeDynamicFeeHookHarness {
                 result.downStreak = 0;
                 if (result.feeIdx != MODE_CASH) {
                     result.feeIdx = MODE_CASH;
+                    result.reasonCode = REASON_DOWN_TO_CASH;
                     return result;
                 }
             }
@@ -259,11 +322,16 @@ contract VolumeDynamicFeeHookHarness {
                 result.downStreak = 0;
                 if (result.feeIdx != MODE_FLOOR) {
                     result.feeIdx = MODE_FLOOR;
+                    result.reasonCode = REASON_DOWN_TO_FLOOR;
                     return result;
                 }
             }
         } else {
             result.downStreak = 0;
+        }
+
+        if (bootstrapV2) {
+            result.reasonCode = REASON_EMA_BOOTSTRAP;
         }
     }
 }
@@ -505,6 +573,242 @@ contract VolumeDynamicFeeHookCheckTest is Test {
         assert(r.upExtremeStreak == 0);
         assert(r.downStreak == 0);
         assert(r.emergencyStreak == 0);
+    }
+
+    /// @dev Mode-to-fee selection cannot drift: each mode must resolve to its exact configured fee.
+    function check_modeFeeSelectorConsistency(
+        uint24 floorFee,
+        uint24 cashFee,
+        uint24 extremeFee,
+        uint8 feeIdx
+    ) public view {
+        vm.assume(floorFee != 0);
+        vm.assume(floorFee < cashFee);
+        vm.assume(cashFee < extremeFee);
+        vm.assume(feeIdx <= 2);
+
+        uint24 selected = harness.modeFee(floorFee, cashFee, extremeFee, feeIdx);
+        if (feeIdx == harness.MODE_FLOOR()) {
+            assert(selected == floorFee);
+        } else if (feeIdx == harness.MODE_CASH()) {
+            assert(selected == cashFee);
+        } else {
+            assert(selected == extremeFee);
+        }
+    }
+
+    /// @dev CASH cannot fall to FLOOR through the ordinary path while hold still remains after the pre-check decrement.
+    function check_holdBlocksOrdinaryCashToFloor(
+        uint64 closeVol,
+        uint96 emaVolScaled,
+        bool bootstrapV2,
+        uint8 holdRemaining,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    ) public view {
+        VolumeDynamicFeeHookHarness.Config memory c = harness.getConfig();
+
+        vm.assume(holdRemaining >= 2);
+        vm.assume(upExtremeStreak <= 7);
+        vm.assume(downStreak <= 15);
+        vm.assume(emergencyStreak <= 15);
+        vm.assume(closeVol >= c.lowVolumeReset);
+        vm.assume(emaVolScaled > 0);
+        vm.assume((uint256(closeVol) * 1_000_000 * 100) / uint256(emaVolScaled) <= c.exitCashEmaRatioPct);
+
+        VolumeDynamicFeeHookHarness.TransitionResult memory r = harness.computeNextModeV2(
+            harness.MODE_CASH(),
+            closeVol,
+            emaVolScaled,
+            bootstrapV2,
+            holdRemaining,
+            upExtremeStreak,
+            downStreak,
+            emergencyStreak
+        );
+
+        assert(r.feeIdx == harness.MODE_CASH());
+        assert(r.downStreak == 0);
+        assert(r.reasonCode == harness.REASON_HOLD());
+    }
+
+    /// @dev EXTREME cannot fall to CASH through the ordinary path while hold still remains after the pre-check decrement.
+    function check_holdBlocksOrdinaryExtremeToCash(
+        uint64 closeVol,
+        uint96 emaVolScaled,
+        bool bootstrapV2,
+        uint8 holdRemaining,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    ) public view {
+        VolumeDynamicFeeHookHarness.Config memory c = harness.getConfig();
+
+        vm.assume(holdRemaining >= 2);
+        vm.assume(upExtremeStreak <= 7);
+        vm.assume(downStreak <= 15);
+        vm.assume(emergencyStreak <= 15);
+        vm.assume(closeVol >= c.lowVolumeReset);
+        vm.assume(emaVolScaled > 0);
+        vm.assume((uint256(closeVol) * 1_000_000 * 100) / uint256(emaVolScaled) <= c.exitExtremeEmaRatioPct);
+
+        VolumeDynamicFeeHookHarness.TransitionResult memory r = harness.computeNextModeV2(
+            harness.MODE_EXTREME(),
+            closeVol,
+            emaVolScaled,
+            bootstrapV2,
+            holdRemaining,
+            upExtremeStreak,
+            downStreak,
+            emergencyStreak
+        );
+
+        assert(r.feeIdx == harness.MODE_EXTREME());
+        assert(r.downStreak == 0);
+        assert(r.reasonCode == harness.REASON_HOLD());
+    }
+
+    /// @dev Starting from EXTREME, reaching FLOOR is only possible via the emergency path, never by ordinary descent.
+    function check_extremeCanReachFloorOnlyViaEmergency(
+        uint64 closeVol,
+        uint96 emaVolScaled,
+        bool bootstrapV2,
+        uint8 holdRemaining,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    ) public view {
+        VolumeDynamicFeeHookHarness.Config memory c = harness.getConfig();
+
+        vm.assume(holdRemaining <= 15);
+        vm.assume(upExtremeStreak <= 7);
+        vm.assume(downStreak <= 15);
+        vm.assume(emergencyStreak <= 15);
+
+        VolumeDynamicFeeHookHarness.TransitionResult memory r = harness.computeNextModeV2(
+            harness.MODE_EXTREME(),
+            closeVol,
+            emaVolScaled,
+            bootstrapV2,
+            holdRemaining,
+            upExtremeStreak,
+            downStreak,
+            emergencyStreak
+        );
+
+        if (r.feeIdx == harness.MODE_FLOOR()) {
+            assert(closeVol < c.lowVolumeReset);
+            assert(emergencyStreak >= c.lowVolumeResetPeriods - 1);
+            assert(r.reasonCode == harness.REASON_EMERGENCY_FLOOR());
+        }
+    }
+
+    /// @dev Idle reset always returns to FLOOR and clears EMA plus all runtime counters.
+    function check_idleResetClearsRuntimeState(uint8 feeIdx, bool paused, uint64 currentSwapVolume) public view {
+        vm.assume(feeIdx <= 2);
+
+        VolumeDynamicFeeHookHarness.IdleResetResult memory r =
+            harness.applyIdleReset(feeIdx, paused, currentSwapVolume);
+
+        assert(r.feeIdx == harness.MODE_FLOOR());
+        assert(r.paused == paused);
+        assert(r.holdRemaining == 0);
+        assert(r.upExtremeStreak == 0);
+        assert(r.downStreak == 0);
+        assert(r.emergencyStreak == 0);
+        assert(r.emaVolScaled == 0);
+        assert(r.periodVolume == currentSwapVolume);
+    }
+
+    /// @dev CASH cannot fall to FLOOR before the final required ordinary confirmation arrives.
+    function check_cashToFloorNeedsFullConfirms(
+        uint64 closeVol,
+        uint96 emaVolScaled,
+        bool bootstrapV2,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    ) public view {
+        VolumeDynamicFeeHookHarness.Config memory c = harness.getConfig();
+
+        vm.assume(upExtremeStreak <= 7);
+        vm.assume(emergencyStreak <= 15);
+        vm.assume(c.exitCashConfirmPeriods >= 2);
+        vm.assume(downStreak < c.exitCashConfirmPeriods - 1);
+        vm.assume(closeVol >= c.lowVolumeReset);
+        vm.assume(emaVolScaled > 0);
+        vm.assume((uint256(closeVol) * 1_000_000 * 100) / uint256(emaVolScaled) <= c.exitCashEmaRatioPct);
+
+        VolumeDynamicFeeHookHarness.TransitionResult memory r = harness.computeNextModeV2(
+            harness.MODE_CASH(),
+            closeVol,
+            emaVolScaled,
+            bootstrapV2,
+            0,
+            upExtremeStreak,
+            downStreak,
+            emergencyStreak
+        );
+
+        assert(r.feeIdx == harness.MODE_CASH());
+        assert(r.downStreak == downStreak + 1);
+    }
+
+    /// @dev EXTREME cannot fall to CASH before the final required ordinary confirmation arrives.
+    function check_extremeToCashNeedsFullConfirms(
+        uint64 closeVol,
+        uint96 emaVolScaled,
+        bool bootstrapV2,
+        uint8 upExtremeStreak,
+        uint8 downStreak,
+        uint8 emergencyStreak
+    ) public view {
+        VolumeDynamicFeeHookHarness.Config memory c = harness.getConfig();
+
+        vm.assume(upExtremeStreak <= 7);
+        vm.assume(emergencyStreak <= 15);
+        vm.assume(c.exitExtremeConfirmPeriods >= 2);
+        vm.assume(downStreak < c.exitExtremeConfirmPeriods - 1);
+        vm.assume(closeVol >= c.lowVolumeReset);
+        vm.assume(emaVolScaled > 0);
+        vm.assume((uint256(closeVol) * 1_000_000 * 100) / uint256(emaVolScaled) <= c.exitExtremeEmaRatioPct);
+
+        VolumeDynamicFeeHookHarness.TransitionResult memory r = harness.computeNextModeV2(
+            harness.MODE_EXTREME(),
+            closeVol,
+            emaVolScaled,
+            bootstrapV2,
+            0,
+            upExtremeStreak,
+            downStreak,
+            emergencyStreak
+        );
+
+        assert(r.feeIdx == harness.MODE_EXTREME());
+        assert(r.downStreak == downStreak + 1);
+    }
+
+    /// @dev Live admin settings changes cannot leave an active hold above the new mode-specific maximum.
+    function check_controllerSettingsClampActiveHold(
+        uint8 feeIdx,
+        uint8 holdRemaining,
+        uint8 holdCashPeriods,
+        uint8 holdExtremePeriods
+    ) public view {
+        vm.assume(feeIdx <= 2);
+        vm.assume(holdRemaining <= 15);
+        vm.assume(holdCashPeriods >= 1 && holdCashPeriods <= 15);
+        vm.assume(holdExtremePeriods >= 1 && holdExtremePeriods <= 15);
+
+        uint8 clamped = harness.clampHoldForSettings(feeIdx, holdRemaining, holdCashPeriods, holdExtremePeriods);
+        if (feeIdx == harness.MODE_FLOOR()) {
+            assert(clamped == 0);
+        } else if (feeIdx == harness.MODE_CASH()) {
+            assert(clamped <= holdCashPeriods);
+        } else {
+            assert(clamped <= holdExtremePeriods);
+        }
     }
 
 }

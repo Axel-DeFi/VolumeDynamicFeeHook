@@ -27,6 +27,7 @@ contract VolumeDynamicFeeHookHandler is Test {
     uint32 public periodSeconds;
     uint32 public idleResetSeconds;
     bool public initialized;
+    uint64 public lastObservedPeriodStart;
 
     uint256 public expectedHookFees0;
     uint256 public expectedHookFees1;
@@ -46,6 +47,8 @@ contract VolumeDynamicFeeHookHandler is Test {
         periodSeconds = _hook.periodSeconds();
         idleResetSeconds = _hook.idleResetSeconds();
         initialized = true;
+        (,, lastObservedPeriodStart,) = _hook.unpackedState();
+        _assertPostState();
     }
 
     function opSwap(uint128 amountStable6) external {
@@ -70,6 +73,8 @@ contract VolumeDynamicFeeHookHandler is Test {
             // so HookFee is always accrued in token1.
             expectedHookFees1 += uint256(uint128(hookDelta));
         }
+
+        _assertPostState();
     }
 
     function opClose(uint32 dt) external {
@@ -78,6 +83,7 @@ contract VolumeDynamicFeeHookHandler is Test {
         uint256 jitter = uint256(dt) % 10;
         vm.warp(block.timestamp + uint256(periodSeconds) + jitter);
         manager.callAfterSwap(hook, key, toBalanceDelta(0, 0));
+        _assertPostState();
     }
 
     function opWarp(uint32 dt) external {
@@ -85,28 +91,45 @@ contract VolumeDynamicFeeHookHandler is Test {
 
         uint256 step = bound(uint256(dt), 0, uint256(idleResetSeconds) * 2);
         vm.warp(block.timestamp + step);
+        _assertPostState();
     }
 
     function opPause() external {
         require(initialized, "not init");
         hook.pause();
+        _assertPostState();
     }
 
     function opUnpause() external {
         require(initialized, "not init");
         hook.unpause();
+        _assertPostState();
     }
 
     function opEmergencyFloor() external {
         require(initialized, "not init");
-        if (!hook.isPaused()) return;
-        hook.emergencyReset(hook.MODE_FLOOR());
+        if (hook.isPaused()) {
+            hook.emergencyReset(hook.MODE_FLOOR());
+        }
+        _assertPostState();
     }
 
     function opEmergencyCash() external {
         require(initialized, "not init");
-        if (!hook.isPaused()) return;
-        hook.emergencyReset(hook.MODE_CASH());
+        if (hook.isPaused()) {
+            hook.emergencyReset(hook.MODE_CASH());
+        }
+        _assertPostState();
+    }
+
+    function opSetControllerSettings(uint8 nextCashHold, uint8 nextExtremeHold) external {
+        require(initialized, "not init");
+
+        VolumeDynamicFeeHook.ControllerSettings memory p = hook.getControllerSettings();
+        p.holdCashPeriods = uint8(bound(uint256(nextCashHold), 1, 15));
+        p.holdExtremePeriods = uint8(bound(uint256(nextExtremeHold), 1, 15));
+        hook.setControllerSettings(p);
+        _assertPostState();
     }
 
     function opScheduleHookFee(uint16 nextPercent) external {
@@ -114,16 +137,20 @@ contract VolumeDynamicFeeHookHandler is Test {
 
         nextPercent = uint16(bound(nextPercent, 0, 10));
         (bool exists,,) = hook.pendingHookFeeChange();
-        if (exists) return;
-        hook.scheduleHookFeeChange(nextPercent);
+        if (!exists) {
+            hook.scheduleHookFeeChange(nextPercent);
+        }
+        _assertPostState();
     }
 
     function opCancelHookFee() external {
         require(initialized, "not init");
 
         (bool exists,,) = hook.pendingHookFeeChange();
-        if (!exists) return;
-        hook.cancelHookFeeChange();
+        if (exists) {
+            hook.cancelHookFeeChange();
+        }
+        _assertPostState();
     }
 
     function opExecuteHookFee(uint32 warpBy) external {
@@ -133,12 +160,40 @@ contract VolumeDynamicFeeHookHandler is Test {
         vm.warp(block.timestamp + step);
 
         (bool exists,, uint64 executeAfter) = hook.pendingHookFeeChange();
-        if (!exists) return;
-
-        if (block.timestamp < executeAfter) {
-            return;
+        if (exists && block.timestamp >= executeAfter) {
+            hook.executeHookFeeChange();
         }
-        hook.executeHookFeeChange();
+        _assertPostState();
+    }
+
+    function _assertPostState() internal {
+        (
+            uint8 feeIdx,
+            uint8 holdRemaining,
+            uint8 upExtremeStreak,
+            uint8 downStreak,
+            uint8 emergencyStreak,
+            uint64 periodStart,,,
+        ) = hook.getStateDebug();
+
+        require(feeIdx <= hook.MODE_EXTREME(), "mode out of range");
+        if (feeIdx == hook.MODE_FLOOR()) {
+            require(holdRemaining == 0, "floor hold must be zero");
+        } else if (feeIdx == hook.MODE_CASH()) {
+            require(holdRemaining <= hook.holdCashPeriods(), "cash hold exceeds config");
+        } else {
+            require(holdRemaining <= hook.holdExtremePeriods(), "extreme hold exceeds config");
+        }
+
+        require(upExtremeStreak <= 7, "up streak overflow");
+        require(downStreak <= 15, "down streak overflow");
+        require(emergencyStreak <= 15, "emergency streak overflow");
+        require(periodStart >= lastObservedPeriodStart, "periodStart must be monotonic");
+        lastObservedPeriodStart = periodStart;
+
+        uint24 expectedFee =
+            feeIdx == hook.MODE_FLOOR() ? hook.floorFee() : feeIdx == hook.MODE_CASH() ? hook.cashFee() : hook.extremeFee();
+        require(manager.lastFee() == expectedFee, "lp fee mismatch");
     }
 }
 
@@ -229,7 +284,7 @@ abstract contract VolumeDynamicFeeHookInvariantBase is
         handler.init(manager, hook, key, stableIsCurrency0());
 
         targetContract(address(handler));
-        bytes4[] memory selectors = new bytes4[](10);
+        bytes4[] memory selectors = new bytes4[](11);
         selectors[0] = handler.opSwap.selector;
         selectors[1] = handler.opClose.selector;
         selectors[2] = handler.opWarp.selector;
@@ -237,9 +292,10 @@ abstract contract VolumeDynamicFeeHookInvariantBase is
         selectors[4] = handler.opUnpause.selector;
         selectors[5] = handler.opEmergencyFloor.selector;
         selectors[6] = handler.opEmergencyCash.selector;
-        selectors[7] = handler.opScheduleHookFee.selector;
-        selectors[8] = handler.opCancelHookFee.selector;
-        selectors[9] = handler.opExecuteHookFee.selector;
+        selectors[7] = handler.opSetControllerSettings.selector;
+        selectors[8] = handler.opScheduleHookFee.selector;
+        selectors[9] = handler.opCancelHookFee.selector;
+        selectors[10] = handler.opExecuteHookFee.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -286,6 +342,25 @@ abstract contract VolumeDynamicFeeHookInvariantBase is
         (uint256 hookFees0, uint256 hookFees1) = hook.hookFeesAccrued();
         assertEq(hookFees0, handler.expectedHookFees0(), "unexpected token0 hook fees");
         assertEq(hookFees1, handler.expectedHookFees1(), "unexpected token1 hook fees");
+    }
+
+    function invariant_activeHoldNeverExceedsModeSpecificConfig() public view {
+        (uint8 feeIdx, uint8 holdRemaining,,,,,,,) = hook.getStateDebug();
+
+        if (feeIdx == hook.MODE_FLOOR()) {
+            assertEq(holdRemaining, 0, "floor mode must not retain hold");
+        } else if (feeIdx == hook.MODE_CASH()) {
+            assertTrue(holdRemaining <= hook.holdCashPeriods(), "cash hold exceeds configured maximum");
+        } else {
+            assertTrue(holdRemaining <= hook.holdExtremePeriods(), "extreme hold exceeds configured maximum");
+        }
+    }
+
+    function invariant_currentLpFeeMatchesCurrentMode() public view {
+        uint8 feeIdx = hook.currentMode();
+        uint24 expectedFee =
+            feeIdx == hook.MODE_FLOOR() ? hook.floorFee() : feeIdx == hook.MODE_CASH() ? hook.cashFee() : hook.extremeFee();
+        assertEq(manager.lastFee(), expectedFee, "manager LP fee drifted from active mode");
     }
 }
 
