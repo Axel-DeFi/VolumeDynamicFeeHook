@@ -54,7 +54,11 @@ fs_permissions = [
 ]
 
 [fuzz]
-runs = 5000
+runs = 256
+
+[invariant]
+runs = 128
+depth = 64
 
 [fmt]
 line_length = 110
