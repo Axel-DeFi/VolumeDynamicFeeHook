@@ -1,4 +1,0 @@
-interface:
-  display_name: "Audit Security"
-  short_description: "Markdown-аудит без автоисправлений"
-  default_prompt: "Проведи комплексный аудит безопасности и сформируй только Markdown-отчет без внесения исправлений"
