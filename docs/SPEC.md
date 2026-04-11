@@ -1,7 +1,8 @@
 # VolumeDynamicFeeHook Specification
 
-This document follows contract NatSpec in `src/VolumeDynamicFeeHook.sol` and is the normative operational mirror for behavior.
+This document follows contract NatSpec in `src/VolumeDynamicFeeHook.sol` and is the normative behavior specification.
 If there is any mismatch, contract NatSpec takes precedence over this document, and this document takes precedence over README/runbooks.
+Deployment policy, monitoring, key-management procedures, and incident response are intentionally out of scope here.
 
 ## Scope
 
@@ -98,7 +99,6 @@ Events:
 - Subsequent closed periods in the same transaction use `periodVolume = 0`.
 - Under these semantics, one transaction can move fee state down by multiple steps (`REASON_DOWN_TO_CASH` / `REASON_DOWN_TO_FLOOR`) depending on current counters and thresholds.
 - This is accepted in current scope as an architectural/economic trade-off, primarily affecting LP yield/routing behavior rather than LP principal ownership.
-- Operations should monitor repeated multi-close downward sequences in `PeriodClosed` as notable behavior.
 
 ## Hold semantics
 
@@ -187,9 +187,6 @@ Reset behavior:
 - keep contract paused.
 - when target mode equals current mode, reset still happens but no `FeeUpdated` event is emitted.
 
-`MODE_CASH` is generally preferred as the default emergency target when total floor reset is not required.
-Monitoring must consume `EmergencyResetToFloorApplied` / `EmergencyResetToCashApplied`, not only `FeeUpdated`.
-
 ## Volume telemetry and dust filtering
 
 - All controller `*Volume` fields are USD amounts in the internal 6-decimal scale; this unit is intentionally omitted
@@ -206,12 +203,8 @@ Threshold updates are immediate:
 
 There is no timelock for this update path by project decision.
 
-Calibration policy:
-- onchain auto-recalibration is intentionally out of scope,
-- threshold tuning is expected from offchain historical analysis,
-- operational target cadence for recalibration is 5 days.
-- default `$4 / 4e6` was selected from observed v1 telemetry.
-- this is mitigation, not a formal proof against all dust-fragmentation patterns on cheap L2.
+Known limitation:
+- onchain auto-recalibration is intentionally out of scope, and dust filtering is mitigation rather than a formal proof against all fragmentation patterns on cheap L2.
 
 ## Stable decimals and scaling
 
@@ -222,7 +215,7 @@ Allowed stable decimals:
 Any other value reverts (`InvalidStableDecimals`).
 
 Scaling path is explicit and bounded for conversion into the internal 6-decimal USD scale.
-Configured stable decimals mode is exposed as `stableDecimals()` for deployment/reuse validation.
+Configured stable decimals mode is exposed as `stableDecimals()` for external validation.
 
 ## EMA model
 
@@ -340,8 +333,7 @@ Claim settlement path:
 
 Native recipient compatibility:
 - For pools with native currency in `token0` or `token1`, claim payout can include native transfer via the PoolManager claim path.
-- Deployment/ensure/preflight flows validate that current owner can receive native payout from PoolManager sender context in the claim path.
-- Owner configuration must preserve native payout compatibility in native-asset pools.
+- Current owner must be able to receive native payout from the PoolManager claim path.
 
 Rescue surface:
 - `rescueToken(Currency,uint256)` (non-pool currencies only)
@@ -374,40 +366,15 @@ Config / pause / emergency events:
 - `EmergencyResetToCashApplied`
 - `RescueTransfer`
 
-Monitoring interpretation note:
+Counter interpretation note:
 - `downStreak` is context-dependent and must be interpreted together with current `feeIdx`.
 - In CASH it tracks cash->floor confirmations; in EXTREME it tracks extreme->cash confirmations.
 
 ## Accepted risks in current scope
 
-- Mitigation remains operational (key management + monitoring), not contract-level in this patch scope.
+- Owner-key trust remains an external assumption, not a contract-enforced governance control.
 - wash-trading / extreme-tier manipulation remains a residual economic risk (more realistic as competitor-funded distortion/DoS in adversarial routing contexts, especially on cheap environments).
 - multi-period catch-up with first-period volume + subsequent zero-volume closes remains accepted as architectural/economic behavior in this scope.
-
-## Operational requirements
-
-- production owner must be a multisig; EOA owner is acceptable only for local/dev/test.
-- hot-wallet owner usage is unacceptable for production.
-- owner key custody should use cold/hardware wallet standards.
-- deploy/ensure/preflight reuse of an existing hook is pinned to the canonical CREATE2 address derived from the
-  frozen `ops/<network>/config/deploy.env` constructor snapshot, while current runtime/admin expectations come from
-  `ops/<network>/config/defaults.env`. Reuse also requires the exact minimal callback surface
-  (`afterInitialize`, `afterSwap`, `afterSwapReturnDelta` only) plus exact PoolManager binding: owner, no pending
-  owner transfer, stable decimals mode, current `dustSwapThreshold`, mode fees, HookFee percent, model params,
-  reset params, controller params, and no pending HookFee change.
-- monitor `PeriodClosed` and alert on repeated abnormal mode escalations.
-- consume `ControllerTransitionTrace` together with `PeriodClosed` when debugging controller decisions, especially
-  hold-protected closes, low-volume resets, trigger-threshold hits, and idle resets.
-- monitor admin/security events as a minimum set:
-  `ModeFeesUpdated`, `ControllerSettingsUpdated`, `ModelUpdated`, `ResetSettingsUpdated`,
-  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `EmergencyResetToFloorApplied`,
-  `EmergencyResetToCashApplied`.
-- for native-asset pools, ownership changes must preserve native payout compatibility.
-- EMA preservation across `setModeFees(...)` is intentional for paused maintenance updates.
-- production guidance for hold parameters:
-  `holdCashPeriods >= 2`, `holdExtremePeriods >= 2`, recommended `3..4`.
-- deploy/preflight guardrails block weak hold configs in non-local runtime by default; explicit override is
-  `ALLOW_WEAK_HOLD_PERIODS=true`.
 
 ## Hook key validation
 
@@ -416,13 +383,3 @@ Pool callback key validation requires:
 - exact fee flag match: `key.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG`.
 
 Any non-exact dynamic-flag encoding is rejected (`NotDynamicFeePool`).
-
-## Gas interpretation note
-
-- inactivity catch-up overhead in period-closing logic is bounded by construction (`periods = elapsed / periodSeconds` with explicit loop semantics).
-- measurement flow includes: normal swap, single-period close, idle reset, and worst-case catch-up (`MAX_IDLE_PERIODS - 1` closed periods with inactivity just below idle reset).
-- gas observations in this repository are engineering measurements, environment-dependent.
-- this is not presented as a formal, exhaustive gas audit.
-- latest local observation artifacts:
-  - `ops/local/out/reports/*.json`
-  - `ops/local/out/reports/*.md`

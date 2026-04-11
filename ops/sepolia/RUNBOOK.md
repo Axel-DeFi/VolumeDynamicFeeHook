@@ -1,5 +1,8 @@
 # Sepolia Runbook
 
+This runbook is a public high-level reference for Sepolia rehearsal.
+Contract semantics remain in `README.md` and `docs/SPEC.md`; private live-operations policy is intentionally out of scope here.
+
 ## Read-only gate
 
 ```bash
@@ -7,22 +10,9 @@ ops/sepolia/scripts/preflight.sh
 ops/sepolia/scripts/inspect.sh
 ```
 
-### Proxy-stable environment (Foundry on macOS)
+`preflight` and `inspect` are read-only phases.
 
-If Foundry panics on system proxy discovery, pin proxy vars before running scripts:
-
-```bash
-export NO_PROXY='127.0.0.1,localhost'
-export no_proxy='127.0.0.1,localhost'
-export HTTP_PROXY='http://127.0.0.1:9'
-export HTTPS_PROXY='http://127.0.0.1:9'
-export ALL_PROXY='http://127.0.0.1:9'
-```
-
-Stop if preflight fails.
-`smoke/full/rerun-safe/emergency` wrappers enforce this gate by default.
-
-## Ensure state
+## Broadcast-capable ensure phases
 
 ```bash
 ops/sepolia/scripts/ensure-hook.sh
@@ -30,20 +20,7 @@ ops/sepolia/scripts/ensure-pool.sh
 ops/sepolia/scripts/ensure-liquidity.sh
 ```
 
-`ensure-hook.sh` reuses only the canonical valid hook for the frozen
-`ops/sepolia/config/deploy.env` snapshot; if the canonical hook is missing it deploys it, and if the canonical address
-is already occupied by invalid code it fails loud instead of silently repointing reuse.
-`ensure-pool.sh` and `ensure-liquidity.sh` also enforce canonical hook identity inside their Foundry scripts and run
-through the preflight gate by default before broadcast.
-`deploy.env` is sourced after scenario overlays and root `.env`, so `DEPLOY_*` keys remain the winning frozen
-constructor snapshot.
-`DEPLOY_*` entries in `deploy.env` must be literal values; shell interpolation is rejected. Set the exact recipient in
-`DEPLOY_OWNER` directly before first deploy/redeploy on Sepolia.
-Helper drivers are reused only if runtime codehash and bound `manager()` match the expected canonical helper for the
-configured `POOL_MANAGER`; otherwise wrappers reprovision them before liquidity/swap phases.
-
-Fill `ops/sepolia/config/deploy.env` for constructor and bootstrap values.
-Leave `ops/sepolia/config/defaults.env` for runtime wiring, budgets, and optional runtime overrides.
+These phases can broadcast transactions.
 
 ## Validation suite
 
@@ -55,98 +32,8 @@ ops/sepolia/scripts/rerun-safe.sh
 ops/sepolia/scripts/emergency.sh
 ```
 
-## Gas measurement
+## Public-safe notes
 
-`ops/sepolia/scripts/gas.sh` runs repeated gas measurements against the live rehearsal hook and writes:
-- `ops/sepolia/out/reports/gas.samples.sepolia.json`
-- `ops/sepolia/out/reports/gas.sepolia.json`
-- `ops/sepolia/out/reports/gas.sepolia.md`
-
-The wrapper temporarily shortens timing parameters for fast period-boundary measurement, resets the hook to `FLOOR`,
-and restores original timing parameters on exit. Runtime EMA/mode state is not preserved exactly; use this path only
-against the Sepolia rehearsal deployment.
-
-## Owner flows
-
-### Owner transfer
-
-- `proposeNewOwner(newOwner)`
-- optional `cancelOwnerTransfer()`
-- `acceptOwner()` by pending owner
-
-`acceptOwner()` also clears any pending `HookFee` change.
-
-### HookFee percent timelock
-
-- `scheduleHookFeeChange(newPercent)`
-- optional `cancelHookFeeChange()`
-- `executeHookFeeChange()` after 48h
-
-Timelock visibility is intentional. The main exposed effect is HookFee timing; LP fee ownership/accrual is unchanged.
-
-### HookFee claim settlement
-
-- Use `claimHookFees()` as owner to claim full accrued balance.
-- Payout always goes to current `owner()`; no recipient override.
-- Payout path is PoolManager accounting withdrawal: `unlock` -> `burn` -> `take`.
-- Oversized payouts are chunked automatically so each `burn` / `take` fits PoolManager `int128` accounting bounds.
-- If pool includes native currency, recipient must be compatible with native payout from PoolManager sender context in the claim path.
-- Sepolia preflight/ensure flow validates this compatibility before deploy/reuse success.
-- If ownership changes later in a native-asset pool, preserve this compatibility invariant.
-
-## Runtime semantics reminder
-
-- `pause()`/`unpause()` are freeze/resume, not implicit floor reset.
-- Pause does not disable swaps and does suspend new HookFee accrual.
-- Emergency resets are explicit and paused-only: `emergencyReset(uint8 targetMode)`.
-  - `targetMode` must be `MODE_FLOOR` (0) or `MODE_CASH` (1).
-- Cash is the default emergency target unless strict floor lockdown is required.
-- If reset target tier already equals current tier, state still resets and emits reset event, but no `FeeUpdated`.
-- Monitoring should consume reset events, not only fee update events.
-- Paused maintenance updates:
-  - `setModeFees(...)` is paused-only, preserves active mode + EMA, clears counters, starts a fresh open period, and syncs LP fee if the active mode fee changed.
-  - `setControllerSettings(...)` updates transition thresholds immediately, preserves EMA and streak counters, and clamps any active mode hold to the new mode-specific maximum when needed.
-  - `setModel(...)` is paused-only and always performs the safe reset for `periodSeconds` / `emaPeriods` changes.
-  - `setResetSettings(...)` updates `idleResetSeconds`, `lowVolumeReset`, and `lowVolumeResetPeriods` immediately without resetting runtime state.
-
-## Telemetry controls
-
-- `dustSwapThreshold` filters dust from telemetry only.
-- Swap execution and fee charging are unchanged for filtered trades.
-- `setDustSwapThreshold(...)` applies immediately.
-- Allowed threshold update range is `1e6..10e6` (default `$4 / 4e6`, selected from observed v1 telemetry).
-- No timelock for threshold updates (project decision).
-- Recalibration target cadence: every 5 days from offchain analytics.
-- This is mitigation, not a formal proof against all fragmentation patterns on cheap L2.
-- Overdue catch-up can close multiple periods in one swap; only the first close uses accumulated period volume and later closes use zero period volume.
-- Multi-close downward sequences are accepted architectural/economic behavior in this scope and should be monitored as notable routing/yield events.
-
-## Accepted governance risks
-
-- This is accepted owner-key risk; mitigation is operational in current scope.
-- Production owner must be multisig; EOA owner is acceptable only for local/dev/test.
-- Hot-wallet owner usage is unacceptable for production.
-- Owner key custody should be cold/hardware.
-- Reuse of an existing hook in deploy/ensure/preflight is pinned to the canonical CREATE2 address derived from the
-  frozen `ops/sepolia/config/deploy.env` constructor snapshot; current runtime/admin
-  expectations come from `ops/sepolia/config/defaults.env` only when explicitly overridden, otherwise they inherit the
-  frozen snapshot. Reuse also requires the exact minimal callback surface, exact PoolManager binding, current
-  `dustSwapThreshold`, and zero pending owner / pending HookFee change.
-
-Controller safety note:
-- `lowVolumeReset` must remain strictly greater than zero.
-- `lowVolumeReset` must remain strictly less than `enterCashMinVolume`.
-- Hold semantics are `N -> N - 1`; production guidance is `holdCashPeriods >= 2`, `holdExtremePeriods >= 2` (recommended `3..4`).
-- Non-local deploy/preflight paths block weak hold configs by default; explicit override: `ALLOW_WEAK_HOLD_PERIODS=true`.
-
-## Monitoring and response
-
-- Monitor `PeriodClosed`, `ControllerTransitionTrace`, and `FeeUpdated` for controller behavior.
-- Monitor owner and HookFee lifecycle events:
-  `OwnerTransferStarted`, `OwnerTransferCancelled`, `OwnerTransferAccepted`, `OwnerUpdated`,
-  `HookFeeChangeScheduled`, `HookFeeChangeCancelled`, `HookFeeChanged`, `HookFeesClaimed`.
-- Monitor config and safety events:
-  `ModeFeesUpdated`, `ControllerSettingsUpdated`, `ModelUpdated`, `ResetSettingsUpdated`,
-  `DustSwapThresholdChanged`, `Paused`, `Unpaused`, `IdleReset`,
-  `EmergencyResetToFloorApplied`, `EmergencyResetToCashApplied`, `RescueTransfer`.
-- Treat wash-trading / fee-poisoning as residual economic manipulation risk, especially on low-cost networks.
+- Read-only phases are suitable for inspection; `ensure-*`, `gas`, `smoke`, `full`, `rerun-safe`, and `emergency` are broadcast-capable.
+- Shared validation covers canonical hook identity, callback flags, and bound pool assumptions before live actions.
+- Detailed environment management, budgets, monitoring, and incident response belong in a separate internal ops project.

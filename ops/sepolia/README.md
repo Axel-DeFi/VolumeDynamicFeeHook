@@ -1,6 +1,7 @@
 # Sepolia Ops
 
-Sepolia validation scripts mirror local phase names, with explicit read-only and broadcast-capable separation.
+`ops/sepolia` exposes public rehearsal helpers for the shared live-ops stack.
+It keeps the same read-only versus broadcast-capable phase split as local, without serving as a full operator handbook.
 
 ## Read-only phases
 
@@ -18,7 +19,7 @@ Sepolia validation scripts mirror local phase names, with explicit read-only and
 - `ops/sepolia/scripts/rerun-safe.sh`
 - `ops/sepolia/scripts/emergency.sh`
 
-## Outputs
+## Public artifacts
 
 - `ops/sepolia/out/reports/*.json`
 - `ops/sepolia/out/state/*.json`
@@ -26,16 +27,6 @@ Sepolia validation scripts mirror local phase names, with explicit read-only and
 
 ## Notes
 
-- Live file layering is `defaults.env` -> scenario overlay -> `.env` -> `deploy.env`; runtime state files may hydrate
-  current hook/pool/driver addresses afterward without changing `DEPLOY_*` identity inputs.
-- `SWAP_DRIVER` and `LIQUIDITY_DRIVER` are helper contracts used by live swap/liquidity phases.
-- If helper addresses are missing or invalid, wrappers auto-provision canonical drivers via the shared
-  `EnsureDriversLive` path and persist them in `ops/sepolia/out/state/sepolia.drivers.json`.
-- `preflight` validates chain id, budget, token decimals, hook/pool consistency before broadcast-capable phases.
-- `smoke/full/rerun-safe/emergency` enforce preflight gate by default and stop on preflight failure.
-- `gas.sh` also enforces preflight, auto-prepares a short-period timing scenario, and restores original timing params on exit.
-- `ensure-pool` and `ensure-liquidity` now also enforce the same preflight gate by default.
-- Broadcast-capable hook/pool/liquidity scripts resolve `HOOK_ADDRESS` to the canonical hook for the current
-  deployment snapshot before sending transactions.
-- Set `OPS_REQUIRE_PREFLIGHT=0` only for explicit break-glass diagnostics.
-- Broadcast-capable scripts also re-check budget safety before sending transactions.
+- Sepolia wrappers reuse shared validation logic from `ops/shared`.
+- `preflight` and `inspect` are the public read-only gate before broadcast-capable phases.
+- Detailed environment policy, budgets, monitoring, and incident handling are intentionally outside this public repo.

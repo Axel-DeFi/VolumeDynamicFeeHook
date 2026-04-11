@@ -1,6 +1,7 @@
 # Optimism Ops
 
-Optimism production operations use the same shared live-ops surface as Sepolia.
+`ops/optimism` exposes the public-facing wrapper layer for Optimism deployment and validation helpers.
+It uses the same shared live-ops surface as Sepolia, without serving as a full production operator handbook.
 
 ## Read-only phases
 
@@ -20,11 +21,5 @@ Optimism production operations use the same shared live-ops surface as Sepolia.
 ## Notes
 
 - Shell wrappers and Foundry scripts are shared with Sepolia under `ops/shared`.
-- Live file layering is `defaults.env -> scenario overlay -> .env -> deploy.env`; runtime state files may hydrate
-  current hook/pool/driver addresses afterward without changing `DEPLOY_*` identity inputs.
-- `preflight` is the required read-only gate before all broadcast-capable phases.
-- Drivers are auto-provisioned on demand for liquidity/swap validation phases and persisted in
-  `ops/optimism/out/state/optimism.drivers.json`.
-- Existing drivers are reused only if runtime codehash and bound `manager()` match the expected canonical helper for
-  the configured `POOL_MANAGER`.
-- Pool/liquidity scripts resolve hook identity through the same canonical shared validation stack as Sepolia.
+- `preflight` and `inspect` are the public read-only gate before broadcast-capable phases.
+- Private production approvals, monitoring, and incident procedures are intentionally outside this public repo.

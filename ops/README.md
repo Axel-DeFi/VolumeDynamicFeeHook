@@ -1,34 +1,26 @@
-# Unified Ops Testing Framework
+# Public Ops Index
 
-`ops/` is the unified testing and operational validation architecture for:
-
-1. Contract-level tests (`ops/tests`)
-2. Local operational validation on Anvil (`ops/local`)
-3. Sepolia operational validation (`ops/sepolia`)
-4. Optimism production operations (`ops/optimism`)
+`ops/` contains public helper scripts and reference material for local validation, Sepolia rehearsal, and Optimism deployment support.
+It is not a complete production operations handbook.
 
 ## High-level layers
 
-- `ops/shared` — reusable Solidity libs/types/config schema plus shared live Foundry/scripts.
-- `ops/tests` — unit/fuzz/invariant test suites.
-- `ops/local` — deterministic local lifecycle + operational scenarios.
-- `ops/sepolia` — public testnet preflight/inspect/ensure/operational flows.
-- `ops/optimism` — production preflight/inspect/ensure/operational flows.
+- `ops/shared` — shared Foundry scripts, config schema, and reusable helpers.
+- `ops/tests` — ops-oriented test harnesses.
+- `ops/local` — deterministic local rehearsal and validation.
+- `ops/sepolia` — public testnet rehearsal helpers.
+- `ops/optimism` — deployment and validation helpers for Optimism.
 
-## Contract test command
-
-```bash
-FOUNDRY_PROFILE=ops NO_PROXY='*' forge test
-```
-
-## Read-only vs broadcast phases
+## Phase boundary
 
 - Read-only: `preflight`, `inspect`
 - Broadcast-capable: `bootstrap`, `ensure-*`, `smoke`, `full`, `rerun-safe`, `emergency`
 
-## Operator docs
+## Public docs
 
 - Local: `ops/local/README.md`, `ops/local/RUNBOOK.md`, `ops/local/SCENARIOS.md`, `ops/local/ACCEPTANCE.md`
 - Sepolia: `ops/sepolia/README.md`, `ops/sepolia/RUNBOOK.md`, `ops/sepolia/SCENARIOS.md`, `ops/sepolia/ACCEPTANCE.md`
 - Optimism: `ops/optimism/README.md`, `ops/optimism/RUNBOOK.md`, `ops/optimism/SCENARIOS.md`, `ops/optimism/ACCEPTANCE.md`
 - Shared schema: `ops/shared/config/schema.md`, `ops/shared/config/scenario.schema.md`
+
+Private production approvals, monitoring, response playbooks, and key-management procedures should live in a separate internal ops project.

@@ -1,6 +1,7 @@
 # Local Ops (Anvil)
 
-Local operational validation lives under `ops/local` and is split into thin shell wrappers and Foundry scripts.
+`ops/local` contains public local rehearsal helpers built from thin shell wrappers and Foundry scripts.
+It is intended for deterministic validation, not as a production operator handbook.
 
 ## Read-only phases
 
@@ -25,7 +26,7 @@ Local operational validation lives under `ops/local` and is split into thin shel
 - `ops/local/scripts/anvil-down.sh`
 - `ops/local/scripts/reset-state.sh`
 
-## Outputs
+## Public artifacts
 
 - `ops/local/out/reports/*.json`
 - `ops/local/out/state/*.json`
@@ -33,10 +34,6 @@ Local operational validation lives under `ops/local` and is split into thin shel
 
 ## Notes
 
-- Config layering: `defaults.env` -> `scenarios/<name>.env` -> `.env` -> `deploy.env`.
-- `deploy.env` is the winning constructor snapshot for `DEPLOY_*`; runtime state hydration happens afterward and does not mutate canonical identity inputs.
-- State hydration: `ops/local/out/state/local.addresses.json` is reused by wrappers.
-- `bootstrap` preflight tolerates stale hook addresses and treats them as bootstrap replacements.
-- `OPS_FORCE_SIMULATION=1` runs scripts without RPC/broadcast for deterministic dry operational checks.
-- `ops/local/scripts/gas.sh` is intentionally test-driven and writes aggregated `min/max/avg` gas reports under
-  `ops/local/out/reports/`.
+- Local wrappers mirror the public phase names used by live-network wrappers.
+- Constructor/runtime config and generated state stay under `ops/local/config` and `ops/local/out`.
+- Detailed monitoring policy, incident handling, and other private operator procedures are intentionally outside this public repo.

@@ -11,7 +11,7 @@ charges a separate trader-facing `HookFee` through `afterSwap`.
 | Where is the main contract? | `src/VolumeDynamicFeeHook.sol` |
 | How do I run checks? | `forge build`, then targeted `forge test --match-contract ...` or `forge test --match-path ...` |
 | Where is the behavior spec? | `docs/SPEC.md` |
-| Where is the deploy / ops flow? | `ops/README.md`, with network-specific runbooks under `ops/local`, `ops/sepolia`, and `ops/optimism` |
+| Where is the public ops index? | `ops/README.md`; network-specific runbooks under `ops/local`, `ops/sepolia`, and `ops/optimism` are secondary references. |
 
 ## Build And Test
 
@@ -22,29 +22,35 @@ forge test --match-contract VolumeDynamicFeeHookClaimAccountingIntegrationTest
 forge test --offline
 ```
 
-## Owner Configuration Groups
+## Owner Authority Summary
 
-Use the current contract API as the source of truth. Owner writes are split into explicit groups:
+Use the current contract API as the source of truth.
 
-| Group | Read path | Write path | Effect |
-| --- | --- | --- | --- |
-| Explicit LP-fee triplet | `getModeFees()` | `setModeFees(...)` | Paused-only maintenance update. Preserves active mode and EMA, clears hold/streak counters, starts a fresh open period, and immediately syncs the LP fee if the active tier changed. |
-| Controller transition settings | `getControllerSettings()` | `setControllerSettings(...)` | Live operational change. Updates entry/exit thresholds immediately, keeps EMA and streak counters, and clamps any active mode hold to the new mode-specific maximum if the old hold would now exceed it. |
-| Reset settings | `getResetSettings()`, `idleResetSeconds()`, `lowVolumeReset()`, `lowVolumeResetPeriods()` | `setResetSettings(...)` | Live operational change. Updates idle-reset and low-volume-reset thresholds immediately without resetting controller runtime state. |
-| Model settings | `periodSeconds()`, `emaPeriods()` | `setModel(...)` | Paused-only model change. Safe-resets the controller to `FLOOR`, zeroes EMA/counters, restarts the open period, and syncs LP fee if needed. |
-| Telemetry dust filter | `dustSwapThreshold()` | `setDustSwapThreshold(...)` | Live operational change. Applies immediately and affects only volume telemetry, not swap execution or fee charging. |
+| Area | Summary |
+| --- | --- |
+| Ownership transfer | Two-step flow: `proposeNewOwner(...)`, optional `cancelOwnerTransfer()`, then `acceptOwner()` by the pending owner. `acceptOwner()` also clears any pending `HookFee` change. |
+| HookFee control | Owner can `scheduleHookFeeChange(...)`, optionally `cancelHookFeeChange()`, and later `executeHookFeeChange()` after the `48 hours` timelock. |
+| Fee and model configuration | Owner can update controller/reset/dust settings live via `setControllerSettings(...)`, `setResetSettings(...)`, and `setDustSwapThreshold(...)`; `setModeFees(...)` and `setModel(...)` are paused-only writes. |
+| Safety controls | Owner can `pause()` / `unpause()` and can run paused-only `emergencyReset(...)` to `MODE_FLOOR` or `MODE_CASH`. |
+| Funds | Owner can `claimHookFees()` to the current `owner()`, plus `rescueToken(...)` for non-pool assets and `rescueETH(...)`. |
 
 ## HookFee Lifecycle
 
 1. `hookFeePercent` scales a separate trader-facing `HookFee` from the currently active LP fee.
-2. Owner changes follow a distinct timelock flow:
-   - `scheduleHookFeeChange(...)`
-   - optional `cancelHookFeeChange()`
-   - `executeHookFeeChange()` after `48 hours`
-3. Only one pending `HookFee` change can exist at a time.
-4. `pause()` does not block swaps, but it does suspend new `HookFee` accrual while paused.
-5. `claimHookFees()` always pays the full currently accrued balances to the current `owner()`.
-6. `acceptOwner()` moves future claim destination to the new owner and clears any pending `HookFee` change.
+2. Owner changes use a distinct `48 hours` timelock; only one pending `HookFee` change can exist at a time.
+3. `pause()` does not block swaps, but it does suspend new `HookFee` accrual while paused.
+4. `claimHookFees()` always pays the full currently accrued balances to the current `owner()`.
+5. `acceptOwner()` moves future claim destination to the new owner and clears any pending `HookFee` change.
+
+## Trust Boundary Summary
+
+| Boundary | Summary |
+| --- | --- |
+| Pool binding | The hook is bound to exactly one pool key: one `currency0` / `currency1` pair, one `tickSpacing`, and one hook address. |
+| PoolManager dependency | Swap accounting, LP-fee updates, and HookFee claim settlement depend on the configured `PoolManager`. |
+| Hook identity | Hook address mining and callback flag correctness matter: the deployed address must expose only `afterInitialize`, `afterSwap`, and `afterSwapReturnDelta`. |
+| Privileged owner | `owner()` is a highly privileged role with authority over fee settings, pause state, emergency reset, claims, and rescue paths. |
+| Governance model | LP-fee behavior and HookFee behavior are contract-owner controlled. They are not trustless governance-controlled. |
 
 ## EMA Ratio Thresholds
 
@@ -65,27 +71,10 @@ ratioPct = (periodVolume * 100) / emaVolume
 
 Volume gates and confirm counters still apply. The ratio thresholds are only one part of the transition rule set.
 
-## Deploy And Operate
+## Public Ops Docs
 
-```bash
-ops/local/scripts/bootstrap.sh
-
-ops/sepolia/scripts/preflight.sh
-ops/sepolia/scripts/ensure-hook.sh
-ops/sepolia/scripts/ensure-pool.sh
-ops/sepolia/scripts/ensure-liquidity.sh
-
-ops/optimism/scripts/preflight.sh
-ops/optimism/scripts/ensure-hook.sh
-ops/optimism/scripts/ensure-pool.sh
-ops/optimism/scripts/ensure-liquidity.sh
-```
-
-For operational details, use:
-- `ops/README.md`
-- `ops/local/RUNBOOK.md`
-- `ops/sepolia/RUNBOOK.md`
-- `ops/optimism/RUNBOOK.md`
+Use `ops/README.md` as the public index for local, Sepolia, and Optimism helper scripts.
+Network-specific runbooks remain discoverable under `ops/local`, `ops/sepolia`, and `ops/optimism`, but they are secondary references rather than the main reader path from this README.
 
 ## License / Usage Notice
 
