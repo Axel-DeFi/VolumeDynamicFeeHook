@@ -16,7 +16,7 @@ offline = true
 # Worst-case: ~160_444 * 7_000 * 4 scenarios ≈ 4.5B gas in setUp. Set limit high enough.
 gas_limit = "18446744073709551615"
 
-broadcast = "broadcast"
+broadcast = "out/broadcast"
 
 # Keep remappings in remappings.txt for reproducibility.
 auto_detect_remappings = false
@@ -43,7 +43,7 @@ evm_version = "cancun"
 bytecode_hash = "ipfs"
 gas_reports = ["VolumeDynamicFeeHook"]
 offline = true
-broadcast = "broadcast"
+broadcast = "out/broadcast"
 auto_detect_remappings = false
 gas_limit = "18446744073709551615"
 fs_permissions = [

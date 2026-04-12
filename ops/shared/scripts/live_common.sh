@@ -140,6 +140,7 @@ forge_live() {
   export https_proxy="$HTTPS_PROXY"
   export all_proxy="$ALL_PROXY"
   export FOUNDRY_PROFILE="${FOUNDRY_PROFILE:-ops}"
+  export FOUNDRY_BROADCAST="${OPS_NETWORK_DIR}/out/broadcast"
 
   if [[ "${OPS_FORCE_SIMULATION:-0}" == "1" ]]; then
     export OPS_BROADCAST=0
