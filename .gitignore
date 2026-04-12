@@ -15,5 +15,8 @@ audit/
 # PDF drafts
 docs/draft/
 
+# Deployment registry (local-only)
+.deployments/
+
 # Secrets
 .env

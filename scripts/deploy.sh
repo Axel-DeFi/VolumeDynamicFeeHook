@@ -131,6 +131,9 @@ if [[ ! -f "$ENSURE_HOOK" || ! -f "$DEPLOY_ENV" ]]; then
   exit 1
 fi
 
+# Load .env for PRIVATE_KEY (needed for deployer address in registry)
+[[ -f "${PROJECT_ROOT}/.env" ]] && { set -a; source "${PROJECT_ROOT}/.env"; set +a; }
+
 echo "[deploy] chain: ${CHAIN}"
 echo "[deploy] price: ${PRICE} USD"
 echo ""
@@ -181,17 +184,68 @@ if [[ -f "$STATE_FILE" ]]; then
   UNISWAP_SLUG="$(uniswap_chain_slug "$CHAIN")"
   TICK_SPACING="$(grep '^DEPLOY_TICK_SPACING=' "$DEPLOY_ENV" | cut -d= -f2)"
 
+  EXPLORER="$(explorer_base_url "$CHAIN")"
+  UNISWAP_SLUG="$(uniswap_chain_slug "$CHAIN")"
+  TICK_SPACING="$(grep '^DEPLOY_TICK_SPACING=' "$DEPLOY_ENV" | cut -d= -f2)"
+  POOL_ID=""
+
+  if [[ -n "$VOLATILE" && -n "$STABLE" && -n "$TICK_SPACING" && -n "$HOOK_ADDRESS" ]]; then
+    POOL_ID="$(compute_pool_id "$VOLATILE" "$STABLE" "$TICK_SPACING" "$HOOK_ADDRESS")"
+  fi
+
   if [[ -n "$HOOK_ADDRESS" && -n "$EXPLORER" ]]; then
     echo "=== Links ==="
     echo "Hook (explorer):  ${EXPLORER}/address/${HOOK_ADDRESS}"
-
-    if [[ -n "$VOLATILE" && -n "$STABLE" && -n "$TICK_SPACING" && -n "$UNISWAP_SLUG" ]]; then
-      POOL_ID="$(compute_pool_id "$VOLATILE" "$STABLE" "$TICK_SPACING" "$HOOK_ADDRESS")"
-      if [[ -n "$POOL_ID" ]]; then
-        echo "Pool (Uniswap):   https://app.uniswap.org/explore/pools/${UNISWAP_SLUG}/${POOL_ID}"
-      fi
+    if [[ -n "$POOL_ID" && -n "$UNISWAP_SLUG" ]]; then
+      echo "Pool (Uniswap):   https://app.uniswap.org/explore/pools/${UNISWAP_SLUG}/${POOL_ID}"
     fi
   fi
+
+  # Append to deployment registry
+  DEPLOYMENTS_DIR="${PROJECT_ROOT}/.deployments"
+  REGISTRY_FILE="${DEPLOYMENTS_DIR}/${CHAIN}.jsonl"
+  mkdir -p "$DEPLOYMENTS_DIR"
+
+  COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+  DEPLOYER="$(cast wallet address --private-key "${PRIVATE_KEY:-}" 2>/dev/null || echo "unknown")"
+  POOL_MANAGER="$(jq -r '.poolManager // empty' "$STATE_FILE")"
+  EXPLORER_HOOK=""
+  UNISWAP_POOL=""
+  [[ -n "$EXPLORER" && -n "$HOOK_ADDRESS" ]] && EXPLORER_HOOK="${EXPLORER}/address/${HOOK_ADDRESS}"
+  [[ -n "$POOL_ID" && -n "$UNISWAP_SLUG" ]] && UNISWAP_POOL="https://app.uniswap.org/explore/pools/${UNISWAP_SLUG}/${POOL_ID}"
+
+  RECORD="$(jq -n \
+    --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --arg chain "$CHAIN" \
+    --arg hook "$HOOK_ADDRESS" \
+    --arg poolId "$POOL_ID" \
+    --arg poolManager "$POOL_MANAGER" \
+    --arg volatile "$VOLATILE" \
+    --arg stable "$STABLE" \
+    --arg tickSpacing "$TICK_SPACING" \
+    --arg price "$PRICE" \
+    --arg commit "$COMMIT" \
+    --arg deployer "$DEPLOYER" \
+    --arg explorerHook "$EXPLORER_HOOK" \
+    --arg uniswapPool "$UNISWAP_POOL" \
+    '{
+      deployedAt: $ts,
+      chain: $chain,
+      hookAddress: $hook,
+      poolId: $poolId,
+      poolManager: $poolManager,
+      volatileToken: $volatile,
+      stableToken: $stable,
+      tickSpacing: ($tickSpacing | tonumber),
+      initPriceUsd: ($price | tonumber),
+      commit: $commit,
+      deployer: $deployer,
+      links: { explorer: $explorerHook, uniswap: $uniswapPool }
+    }')"
+
+  echo "$RECORD" >> "$REGISTRY_FILE"
+  echo ""
+  echo "[deploy] recorded to ${REGISTRY_FILE}"
 else
   echo "[deploy] warning: state file not found at ${STATE_FILE}"
 fi
