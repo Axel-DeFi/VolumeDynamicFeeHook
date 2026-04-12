@@ -12,5 +12,8 @@ __MACOSX/
 # Audit (machine reports, drafts)
 audit/
 
+# PDF drafts
+docs/draft/
+
 # Secrets
 .env
