@@ -183,10 +183,6 @@ if [[ -f "$STATE_FILE" ]]; then
   EXPLORER="$(explorer_base_url "$CHAIN")"
   UNISWAP_SLUG="$(uniswap_chain_slug "$CHAIN")"
   TICK_SPACING="$(grep '^DEPLOY_TICK_SPACING=' "$DEPLOY_ENV" | cut -d= -f2)"
-
-  EXPLORER="$(explorer_base_url "$CHAIN")"
-  UNISWAP_SLUG="$(uniswap_chain_slug "$CHAIN")"
-  TICK_SPACING="$(grep '^DEPLOY_TICK_SPACING=' "$DEPLOY_ENV" | cut -d= -f2)"
   POOL_ID=""
 
   if [[ -n "$VOLATILE" && -n "$STABLE" && -n "$TICK_SPACING" && -n "$HOOK_ADDRESS" ]]; then
@@ -203,7 +199,7 @@ if [[ -f "$STATE_FILE" ]]; then
 
   # Append to deployment registry
   DEPLOYMENTS_DIR="${PROJECT_ROOT}/.deployments"
-  REGISTRY_FILE="${DEPLOYMENTS_DIR}/${CHAIN}.jsonl"
+  REGISTRY_FILE="${DEPLOYMENTS_DIR}/${CHAIN}.json"
   mkdir -p "$DEPLOYMENTS_DIR"
 
   COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
@@ -243,7 +239,12 @@ if [[ -f "$STATE_FILE" ]]; then
       links: { explorer: $explorerHook, uniswap: $uniswapPool }
     }')"
 
-  echo "$RECORD" >> "$REGISTRY_FILE"
+  if [[ -f "$REGISTRY_FILE" ]]; then
+    jq --argjson rec "$RECORD" '. + [$rec]' "$REGISTRY_FILE" > "${REGISTRY_FILE}.tmp" \
+      && mv "${REGISTRY_FILE}.tmp" "$REGISTRY_FILE"
+  else
+    echo "[$RECORD]" | jq '.' > "$REGISTRY_FILE"
+  fi
   echo ""
   echo "[deploy] recorded to ${REGISTRY_FILE}"
 else
