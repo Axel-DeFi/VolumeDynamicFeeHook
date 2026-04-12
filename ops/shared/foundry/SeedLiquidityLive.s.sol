@@ -52,6 +52,9 @@ contract SeedLiquidityLive is Script {
         actions[2] = bytes1(uint8(CLOSE_CURRENCY));
         actions[3] = bytes1(uint8(SWEEP));
 
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        address recipient = vm.addr(pk);
+
         bytes[] memory params = new bytes[](4);
         params[0] = abi.encode(key, tickLower, tickUpper, liquidity, amount0Max, amount1Max, recipient, bytes(""));
         params[1] = abi.encode(key.currency0);
@@ -67,9 +70,6 @@ contract SeedLiquidityLive is Script {
         console.log("[seed] liquidity:", liquidity);
         console.log("[seed] amount0Max (ETH wei):", amount0Max);
         console.log("[seed] amount1Max (USDC raw):", amount1Max);
-
-        uint256 pk = vm.envUint("PRIVATE_KEY");
-        address recipient = vm.addr(pk);
 
         vm.startBroadcast(pk);
 
