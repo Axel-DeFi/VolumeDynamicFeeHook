@@ -5,6 +5,46 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OPS_DIR="${PROJECT_ROOT}/ops"
 
+explorer_base_url() {
+  local chain="$1"
+  case "$chain" in
+    optimism)  echo "https://optimistic.etherscan.io" ;;
+    sepolia)   echo "https://sepolia.etherscan.io" ;;
+    *)         echo "" ;;
+  esac
+}
+
+uniswap_chain_slug() {
+  local chain="$1"
+  case "$chain" in
+    optimism)  echo "optimism" ;;
+    sepolia)   echo "sepolia" ;;
+    *)         echo "" ;;
+  esac
+}
+
+compute_pool_id() {
+  local volatile="$1"
+  local stable="$2"
+  local tick_spacing="$3"
+  local hook="$4"
+  local currency0 currency1
+
+  # Sort tokens: lower address first
+  if [[ "$(printf '%s' "$volatile" | tr '[:upper:]' '[:lower:]')" < "$(printf '%s' "$stable" | tr '[:upper:]' '[:lower:]')" ]]; then
+    currency0="$volatile"
+    currency1="$stable"
+  else
+    currency0="$stable"
+    currency1="$volatile"
+  fi
+
+  local encoded
+  encoded="$(cast abi-encode "f(address,address,uint24,int24,address)" \
+    "$currency0" "$currency1" 8388608 "$tick_spacing" "$hook" 2>/dev/null)" || return 1
+  cast keccak "$encoded" 2>/dev/null
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -126,11 +166,32 @@ echo "=== Phase 3/3: Initialize Pool ==="
 bash "$ENSURE_POOL"
 echo ""
 
-# Summary
+# Summary & links
 STATE_FILE="${CHAIN_DIR}/out/state/${CHAIN}.addresses.json"
 if [[ -f "$STATE_FILE" ]]; then
   echo "=== Deploy Complete ==="
   cat "$STATE_FILE"
+  echo ""
+
+  HOOK_ADDRESS="$(jq -r '.hookAddress // empty' "$STATE_FILE")"
+  VOLATILE="$(jq -r '.volatileToken // empty' "$STATE_FILE")"
+  STABLE="$(jq -r '.stableToken // empty' "$STATE_FILE")"
+
+  EXPLORER="$(explorer_base_url "$CHAIN")"
+  UNISWAP_SLUG="$(uniswap_chain_slug "$CHAIN")"
+  TICK_SPACING="$(grep '^DEPLOY_TICK_SPACING=' "$DEPLOY_ENV" | cut -d= -f2)"
+
+  if [[ -n "$HOOK_ADDRESS" && -n "$EXPLORER" ]]; then
+    echo "=== Links ==="
+    echo "Hook (explorer):  ${EXPLORER}/address/${HOOK_ADDRESS}"
+
+    if [[ -n "$VOLATILE" && -n "$STABLE" && -n "$TICK_SPACING" && -n "$UNISWAP_SLUG" ]]; then
+      POOL_ID="$(compute_pool_id "$VOLATILE" "$STABLE" "$TICK_SPACING" "$HOOK_ADDRESS")"
+      if [[ -n "$POOL_ID" ]]; then
+        echo "Pool (Uniswap):   https://app.uniswap.org/explore/pools/${UNISWAP_SLUG}/${POOL_ID}"
+      fi
+    fi
+  fi
 else
   echo "[deploy] warning: state file not found at ${STATE_FILE}"
 fi
