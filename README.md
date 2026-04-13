@@ -1,6 +1,6 @@
 # VolumeDynamicFeeHook
 
-A Uniswap v4 hook that dynamically adjusts LP fees based on real-time trading volume. The hook tracks stable-side notional volume via an EMA controller and automatically transitions between three fee regimes -- **Floor**, **Cash**, and **Extreme** -- to optimize LP returns across varying market conditions.
+A Uniswap v4 hook that dynamically adjusts LP fees based on real-time trading volume. The hook tracks stable-side notional volume via an EMA controller and automatically transitions between three fee regimes: Floor, Cash, and Extreme - to optimize LP returns across varying market conditions.
 
 A separate **HookFee** -- a trader-facing charge proportional to the active LP fee -- provides protocol revenue with a 48-hour timelock on any parameter changes.
 
