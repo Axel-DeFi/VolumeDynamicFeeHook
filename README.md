@@ -18,8 +18,7 @@ A separate **HookFee** -- a trader-facing charge proportional to the active LP f
 | Network | Contract | Address |
 |---------|----------|---------|
 | Optimism | VolumeDynamicFeeHook | [`0x2C3254Da64956F495356A482D51E7311347f5044`](https://optimistic.etherscan.io/address/0x2C3254Da64956F495356A482D51E7311347f5044) |
-
-Pool pair: ETH / USDC
+| Optimism | Pool (ETH / USDC) | [`0x226d6297...31fa6974c`](https://app.uniswap.org/explore/pools/optimism/0x226d6297e0a25f5c1441a73922f166f16be6963b7d86dfbb97faa9e31fa6974c) |
 
 ## Documentation
 
