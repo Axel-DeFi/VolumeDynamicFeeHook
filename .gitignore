@@ -18,5 +18,8 @@ docs/draft/
 # Deployment registry (local-only)
 .deployments/
 
+# Slither / crytic-compile
+crytic-export/
+
 # Secrets
 .env
