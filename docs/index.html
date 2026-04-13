@@ -5,41 +5,234 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VolumeDynamicFeeHook — Docs</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 680px; margin: 60px auto; padding: 0 24px; color: #1e2535; }
-    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
-    p.sub { color: #7a8ba0; font-size: 0.9rem; margin-top: 0; }
-    ul { list-style: none; padding: 0; margin-top: 32px; }
-    li { border: 1px solid #d0d8e4; border-radius: 6px; margin-bottom: 10px; }
-    a { display: flex; align-items: center; gap: 12px; padding: 14px 18px; text-decoration: none; color: #1e2535; }
-    a:hover { background: #f3f6f9; }
-    .badge { font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; background: #2b3556; color: #fff; flex-shrink: 0; }
-    .badge.en { background: #5b8db8; }
-    .label { font-size: 0.95rem; font-weight: 600; }
-    .desc { font-size: 0.8rem; color: #7a8ba0; margin-top: 2px; }
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: #f3f6f9;
+      color: #1e2535;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: #1a2035;
+      color: #fff;
+      padding: 56px 24px 48px;
+      text-align: center;
+      border-bottom: 3px solid #5b8db8;
+    }
+    .hero-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #5b8db8;
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 0 0 12px;
+      letter-spacing: -0.5px;
+    }
+    .hero p {
+      font-size: 0.95rem;
+      color: #8fa8c0;
+      max-width: 520px;
+      margin: 0 auto 24px;
+      line-height: 1.6;
+    }
+    .hero-badges {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .hero-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: #212840;
+      color: #7aaacf;
+      border: 1px solid #2b3556;
+    }
+
+    /* ── Main content ── */
+    .content {
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 24px 60px;
+    }
+
+    /* ── Section ── */
+    .section { margin-bottom: 36px; }
+    .section-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #7a8ba0;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #d0d8e4;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border: 1px solid #d0d8e4;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      transition: box-shadow 0.15s;
+    }
+    .card:hover { box-shadow: 0 3px 12px rgba(30,37,53,0.09); }
+
+    .card a {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .card-icon {
+      width: 36px; height: 36px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .icon-pdf-ru { background: #c0d8ed; color: #1a2035; }
+    .icon-pdf-en { background: #5b8db8; color: #fff; }
+    .icon-md     { background: #e8e8e8; color: #4a5568; }
+
+    .card-text { flex: 1; min-width: 0; }
+    .card-label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-desc {
+      font-size: 0.78rem;
+      color: #7a8ba0;
+      margin-top: 2px;
+    }
+
+    .card-ext {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #b0bec8;
+      flex-shrink: 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #b0bec8;
+      padding-bottom: 32px;
+    }
+    footer a { color: #7aaacf; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <h1>VolumeDynamicFeeHook</h1>
-  <p class="sub">Uniswap v4 Hook — Documentation</p>
-  <ul>
-    <li>
-      <a href="concept-v2.4.0_RU.pdf">
-        <span class="badge">RU</span>
-        <div>
-          <div class="label">Концепция продукта — v2.4.0</div>
-          <div class="desc">Описание механизма, режимов комиссии, аудит</div>
-        </div>
-      </a>
-    </li>
-    <li>
-      <a href="concept-v2.4.0_EN.pdf">
-        <span class="badge en">EN</span>
-        <div>
-          <div class="label">Product Concept — v2.4.0</div>
-          <div class="desc">Fee mechanism, regimes, audit summary</div>
-        </div>
-      </a>
-    </li>
-  </ul>
+
+  <div class="hero">
+    <div class="hero-tag">Uniswap v4 · Optimism</div>
+    <h1>VolumeDynamicFeeHook</h1>
+    <p>A dynamic fee hook that tracks trading volume and automatically switches the LP fee rate between three regimes — Floor, Cash, and Extreme.</p>
+    <div class="hero-badges">
+      <span class="hero-badge">v2.4.0 · Final</span>
+      <span class="hero-badge">Solidity ^0.8.26</span>
+      <span class="hero-badge">EVM L1 / L2</span>
+      <span class="hero-badge">Audit: Critical 0 · High 0 · Medium 0 · Low 0</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div class="section">
+      <div class="section-title">Security Audit · v2.4.0</div>
+
+      <div class="card">
+        <a href="audit_v2.4.0_RU.pdf" target="_blank">
+          <div class="card-icon icon-pdf-ru">RU</div>
+          <div class="card-text">
+            <div class="card-label">Аудит безопасности смарт-контракта — v2.4.0</div>
+            <div class="card-desc">Полный глубокий аудит · 15 разделов · 5 информационных наблюдений · подтверждённых уязвимостей не обнаружено</div>
+          </div>
+          <div class="card-ext">PDF</div>
+        </a>
+      </div>
+
+      <div class="card">
+        <a href="audit_v2.4.0_EN.pdf" target="_blank">
+          <div class="card-icon icon-pdf-en">EN</div>
+          <div class="card-text">
+            <div class="card-label">Smart Contract Security Audit — v2.4.0</div>
+            <div class="card-desc">Full deep audit · 15 sections · 5 informational observations · no confirmed vulnerabilities</div>
+          </div>
+          <div class="card-ext">PDF</div>
+        </a>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Product Concept · v2.4.0</div>
+
+      <div class="card">
+        <a href="concept-v2.4.0_RU.pdf" target="_blank">
+          <div class="card-icon icon-pdf-ru">RU</div>
+          <div class="card-text">
+            <div class="card-label">Концепция продукта — v2.4.0</div>
+            <div class="card-desc">Механизм динамической комиссии, режимы, параметры, аудит</div>
+          </div>
+          <div class="card-ext">PDF</div>
+        </a>
+      </div>
+
+      <div class="card">
+        <a href="concept-v2.4.0_EN.pdf" target="_blank">
+          <div class="card-icon icon-pdf-en">EN</div>
+          <div class="card-text">
+            <div class="card-label">Product Concept — v2.4.0</div>
+            <div class="card-desc">Dynamic fee mechanism, regimes, parameters, audit summary</div>
+          </div>
+          <div class="card-ext">PDF</div>
+        </a>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Technical Reference</div>
+
+      <div class="card">
+        <a href="SPEC.md" target="_blank">
+          <div class="card-icon icon-md">MD</div>
+          <div class="card-text">
+            <div class="card-label">Technical Specification — SPEC.md</div>
+            <div class="card-desc">State machine, fee regimes, controller parameters, invariants, deployment notes</div>
+          </div>
+          <div class="card-ext">MD</div>
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <a href="https://github.com/Axel-DeFi/VolumeDynamicFeeHook" target="_blank">github.com/Axel-DeFi/VolumeDynamicFeeHook</a>
+  </footer>
+
 </body>
 </html>
