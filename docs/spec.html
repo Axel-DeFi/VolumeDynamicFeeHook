@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC.md — VolumeDynamicFeeHook</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: #f3f6f9;
+      color: #1e2535;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      background: #1a2035;
+      border-bottom: 3px solid #5b8db8;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .topbar a {
+      font-size: 0.8rem;
+      color: #7aaacf;
+      text-decoration: none;
+    }
+    .topbar a:hover { text-decoration: underline; }
+    .topbar-sep { color: #2b3556; }
+    .topbar-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .topbar-badge {
+      margin-left: auto;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 3px;
+      background: #212840;
+      color: #7aaacf;
+      border: 1px solid #2b3556;
+    }
+
+    /* ── Content ── */
+    .content {
+      max-width: 820px;
+      margin: 36px auto;
+      padding: 0 24px 80px;
+    }
+
+    #md-body {
+      background: #fff;
+      border: 1px solid #d0d8e4;
+      border-radius: 8px;
+      padding: 40px 48px;
+    }
+
+    /* ── Markdown typography ── */
+    #md-body h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #1a2035;
+      border-bottom: 2px solid #5b8db8;
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+    #md-body h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      background: #1a2035;
+      padding: 7px 14px;
+      border-radius: 4px;
+      margin-top: 36px;
+      border-left: 3px solid #5b8db8;
+    }
+    #md-body h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #1a2035;
+      border-left: 2px solid #5b8db8;
+      padding-left: 10px;
+      margin-top: 24px;
+    }
+    #md-body h4 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #2b3556;
+      margin-top: 20px;
+    }
+    #md-body p { line-height: 1.7; margin: 10px 0; }
+    #md-body ul, #md-body ol { padding-left: 22px; line-height: 1.7; }
+    #md-body li { margin: 4px 0; }
+    #md-body code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em;
+      background: #eef3f8;
+      border: 1px solid #d0d8e4;
+      border-radius: 3px;
+      padding: 1px 5px;
+      color: #1a2035;
+    }
+    #md-body pre {
+      background: #1a2035;
+      border-radius: 6px;
+      padding: 16px 20px;
+      overflow-x: auto;
+    }
+    #md-body pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #c0d8ed;
+      font-size: 0.85rem;
+    }
+    #md-body blockquote {
+      margin: 16px 0;
+      padding: 10px 16px;
+      background: #eef3f8;
+      border-left: 3px solid #5b8db8;
+      border-radius: 0 4px 4px 0;
+      color: #4a5568;
+    }
+    #md-body table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      margin: 16px 0;
+    }
+    #md-body th {
+      background: #2b3556;
+      color: #fff;
+      font-weight: 700;
+      padding: 8px 12px;
+      text-align: left;
+    }
+    #md-body td {
+      padding: 7px 12px;
+      border-bottom: 1px solid #d0d8e4;
+    }
+    #md-body tr:nth-child(even) td { background: #f3f6f9; }
+    #md-body hr {
+      border: none;
+      border-top: 1px solid #d0d8e4;
+      margin: 28px 0;
+    }
+    #md-body a { color: #5b8db8; }
+    #md-body a:hover { color: #1a2035; }
+
+    /* ── Loading state ── */
+    #loading {
+      text-align: center;
+      padding: 60px 0;
+      color: #7a8ba0;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      #md-body { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <a href="index.html">← Docs</a>
+    <span class="topbar-sep">/</span>
+    <span class="topbar-title">SPEC.md</span>
+    <span class="topbar-badge">Technical Specification</span>
+  </div>
+
+  <div class="content">
+    <div id="md-body">
+      <div id="loading">Loading specification…</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script>
+    fetch('SPEC.md')
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(text => {
+        document.getElementById('md-body').innerHTML = marked.parse(text);
+      })
+      .catch(err => {
+        document.getElementById('md-body').innerHTML =
+          '<p style="color:#c0392b">Failed to load SPEC.md: ' + err.message + '</p>';
+      });
+  </script>
+
+</body>
+</html>
