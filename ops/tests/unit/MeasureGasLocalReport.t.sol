@@ -42,7 +42,6 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     }
 
     struct LogCounts {
-        uint256 periodClosedCount;
         uint256 traceCount;
         uint256 idleResetCount;
         uint256 feeUpdatedCount;
@@ -81,7 +80,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         bool paused;
     }
 
-    struct ControllerTransitionTraceLog {
+    struct PeriodTraceLog {
         uint64 periodStart;
         uint24 fromFee;
         uint8 fromFeeIdx;
@@ -97,27 +96,12 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         uint8 reasonCode;
     }
 
-    struct PeriodClosedLog {
-        uint24 fromFee;
-        uint8 fromFeeIdx;
-        uint24 toFee;
-        uint8 toFeeIdx;
-        uint64 periodVolume;
-        uint96 emaVolumeScaled;
-        uint64 approxLpFeesUsd;
-        uint8 reasonCode;
-    }
-
     struct ScenarioLogCapture {
         LogCounts counts;
         ReasonCounts traceReasons;
-        ReasonCounts periodClosedReasons;
-        ControllerTransitionTraceLog firstTrace;
-        ControllerTransitionTraceLog lastTrace;
-        PeriodClosedLog firstPeriodClosed;
-        PeriodClosedLog lastPeriodClosed;
+        PeriodTraceLog firstTrace;
+        PeriodTraceLog lastTrace;
         bool hasTrace;
-        bool hasPeriodClosed;
     }
 
     uint64 internal constant GAP_2_PERIODS = 2;
@@ -128,10 +112,8 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     uint16 internal constant TRACE_FLAG_EXTREME_EXIT_TRIGGER = 0x0040;
     uint16 internal constant TRACE_FLAG_CASH_EXIT_TRIGGER = 0x0080;
 
-    bytes32 internal constant PERIOD_CLOSED_SIG =
-        keccak256("PeriodClosed(uint24,uint8,uint24,uint8,uint64,uint96,uint64,uint8)");
-    bytes32 internal constant TRACE_SIG = keccak256(
-        "ControllerTransitionTrace(uint64,uint24,uint8,uint24,uint8,uint64,uint96,uint96,uint64,uint16,uint16,uint16,uint8)"
+    bytes32 internal constant PERIOD_TRACE_SIG = keccak256(
+        "PeriodTrace(uint64,uint24,uint8,uint24,uint8,uint64,uint96,uint96,uint64,uint16,uint16,uint16,uint8)"
     );
     bytes32 internal constant IDLE_RESET_SIG = keccak256("IdleReset(uint24,uint8)");
     bytes32 internal constant FEE_UPDATED_SIG = keccak256("FeeUpdated(uint24,uint8,uint64,uint96)");
@@ -943,7 +925,6 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         CounterSnapshot memory snapshot
     ) internal view {
         ScenarioLogCapture memory capture = _collectLogCapture(logs);
-        _assertReasonTalliesAligned(capture);
 
         if (scenario == Scenario.NormalSwap) {
             _assertNormalSwap(capture.counts, snapshot);
@@ -1076,7 +1057,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
     function _assertNormalSwap(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
         (uint64 periodVolume,, uint64 periodStart, uint8 feeIdx) = hook.unpackedState();
-        assertEq(counts.periodClosedCount, 0, "normal swap must not close a period");
+        assertEq(counts.traceCount, 0, "normal swap must not close a period");
         assertEq(counts.traceCount, 0, "normal swap must not emit a transition trace");
         assertEq(counts.idleResetCount, 0, "normal swap must not idle reset");
         assertEq(counts.feeUpdatedCount, 0, "normal swap must not update LP fee");
@@ -1089,7 +1070,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
 
     function _assertClaimHookFeesOneChunk(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
         (uint256 fees0After, uint256 fees1After) = hook.hookFeesAccrued();
-        assertEq(counts.periodClosedCount, 0, "one-chunk claim must not close a period");
+        assertEq(counts.traceCount, 0, "one-chunk claim must not close a period");
         assertEq(counts.traceCount, 0, "one-chunk claim must not emit transition traces");
         assertEq(counts.idleResetCount, 0, "one-chunk claim must not idle reset");
         assertEq(counts.feeUpdatedCount, 0, "one-chunk claim must not update LP fee");
@@ -1112,7 +1093,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.emaVolumeScaled, 0, "single close baseline must start before EMA bootstrap");
         assertEq(beforeState.periodVolume, _seedUsd6(), "single close baseline must close the seeded period");
 
-        assertEq(capture.counts.periodClosedCount, 1, "single close must close exactly one elapsed period");
+        assertEq(capture.counts.traceCount, 1, "single close must close exactly one elapsed period");
         assertEq(capture.counts.traceCount, 1, "single close must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "single close must not idle reset");
         assertEq(capture.counts.feeUpdatedCount, 0, "single close must not update LP fee");
@@ -1138,7 +1119,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.feeIdx, hook.MODE_FLOOR(), "floor->cash path must start in floor");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "floor->cash path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "floor->cash path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "floor->cash path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "floor->cash path must not idle reset");
@@ -1168,7 +1149,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.emergencyStreak, 0, "cash->floor path must not preload emergency reset");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "cash->floor path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "cash->floor path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "cash->floor path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "cash->floor path must not idle reset");
@@ -1206,7 +1187,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.emergencyStreak, 0, "cash->extreme path must not preload emergency reset");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "cash->extreme path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "cash->extreme path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "cash->extreme path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "cash->extreme path must not idle reset");
@@ -1246,7 +1227,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.emergencyStreak, 0, "extreme->cash path must not preload emergency reset");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "extreme->cash path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "extreme->cash path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "extreme->cash path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "extreme->cash path must not idle reset");
@@ -1283,7 +1264,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.downStreak, 0, "cash emergency path must not preload ordinary down confirms");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "cash emergency path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "cash emergency path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "cash emergency path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "cash emergency path must not idle reset");
@@ -1326,7 +1307,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             1,
             "extreme emergency path must close exactly one elapsed period"
         );
@@ -1368,7 +1349,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     ) internal view {
         assertEq(beforeState.feeIdx, hook.MODE_CASH(), "idle reset path must start in cash");
 
-        assertEq(capture.counts.periodClosedCount, 1, "idle reset must emit one closed-period record");
+        assertEq(capture.counts.traceCount, 1, "idle reset must emit one closed-period record");
         assertEq(capture.counts.traceCount, 1, "idle reset must emit one transition trace");
         assertEq(capture.counts.idleResetCount, 1, "idle reset must emit IdleReset");
         assertEq(capture.counts.feeUpdatedCount, 1, "idle reset from cash must sync LP fee once");
@@ -1396,7 +1377,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
         assertEq(beforeState.downStreak, 0, "cash hold path must start before down confirms");
 
-        assertEq(capture.counts.periodClosedCount, 1, "cash hold path must close exactly one elapsed period");
+        assertEq(capture.counts.traceCount, 1, "cash hold path must close exactly one elapsed period");
         assertEq(capture.counts.traceCount, 1, "cash hold path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "cash hold path must not idle reset");
         assertEq(capture.counts.feeUpdatedCount, 0, "cash hold path must not change LP fee");
@@ -1437,7 +1418,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.downStreak, 0, "extreme hold path must start before down confirms");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "extreme hold path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "extreme hold path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "extreme hold path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "extreme hold path must not idle reset");
@@ -1485,7 +1466,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             expectedPeriods,
             "gap no-transition path must close the expected periods"
         );
@@ -1532,7 +1513,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.feeIdx, hook.MODE_FLOOR(), "gap floor->cash path must start in floor");
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap floor->cash path must close two missed periods"
         );
@@ -1583,7 +1564,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap cash->floor path must close two missed periods"
         );
@@ -1626,7 +1607,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap cash->extreme path must close two missed periods"
         );
@@ -1681,7 +1662,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap extreme->cash path must close two missed periods"
         );
@@ -1726,7 +1707,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.downStreak, 0, "gap cash emergency path must not preload ordinary down confirms");
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap cash emergency path must close two missed periods"
         );
@@ -1775,7 +1756,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         );
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap extreme emergency path must close two missed periods"
         );
@@ -1817,7 +1798,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.periodVolume, 0, "no-swaps path must start from an empty open period");
         assertEq(beforeState.emaVolumeScaled, 0, "no-swaps path must start before EMA bootstrap");
 
-        assertEq(capture.counts.periodClosedCount, 1, "no-swaps path must close exactly one elapsed period");
+        assertEq(capture.counts.traceCount, 1, "no-swaps path must close exactly one elapsed period");
         assertEq(capture.counts.traceCount, 1, "no-swaps path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "no-swaps path must not idle reset");
         assertEq(capture.counts.feeUpdatedCount, 0, "no-swaps path must not change LP fee");
@@ -1845,7 +1826,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertGt(beforeState.emaVolumeScaled, 0, "seeded no-swaps path must start from a warmed EMA");
 
         assertEq(
-            capture.counts.periodClosedCount, 1, "seeded no-swaps path must close exactly one elapsed period"
+            capture.counts.traceCount, 1, "seeded no-swaps path must close exactly one elapsed period"
         );
         assertEq(capture.counts.traceCount, 1, "seeded no-swaps path must emit one trace");
         assertEq(capture.counts.idleResetCount, 0, "seeded no-swaps path must not idle reset");
@@ -1880,7 +1861,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertEq(beforeState.emaVolumeScaled, 0, "gap no-swaps path must start before EMA bootstrap");
 
         assertEq(
-            capture.counts.periodClosedCount, GAP_2_PERIODS, "gap no-swaps path must close two missed periods"
+            capture.counts.traceCount, GAP_2_PERIODS, "gap no-swaps path must close two missed periods"
         );
         assertEq(capture.counts.traceCount, GAP_2_PERIODS, "gap no-swaps path must emit two traces");
         assertEq(capture.counts.idleResetCount, 0, "gap no-swaps path must not idle reset");
@@ -1913,7 +1894,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertGt(beforeState.emaVolumeScaled, 0, "seeded gap no-swaps path must start from a warmed EMA");
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "seeded gap no-swaps path must close two missed periods"
         );
@@ -1959,7 +1940,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertGt(beforeState.holdRemaining, 1, "gap cash hold path must start with hold active");
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap cash hold path must close two missed periods"
         );
@@ -1994,7 +1975,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         assertGt(beforeState.holdRemaining, 1, "gap extreme hold path must start with hold active");
 
         assertEq(
-            capture.counts.periodClosedCount,
+            capture.counts.traceCount,
             GAP_2_PERIODS,
             "gap extreme hold path must close two missed periods"
         );
@@ -2028,7 +2009,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
             if (logs[i].emitter != address(hook) || logs[i].topics.length == 0) continue;
 
             bytes32 topic0 = logs[i].topics[0];
-            if (topic0 == TRACE_SIG) {
+            if (topic0 == PERIOD_TRACE_SIG) {
                 capture.counts.traceCount += 1;
                 (
                     uint64 periodStart_,
@@ -2063,7 +2044,7 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
                     )
                 );
 
-                capture.lastTrace = ControllerTransitionTraceLog({
+                capture.lastTrace = PeriodTraceLog({
                     periodStart: periodStart_,
                     fromFee: fromFee_,
                     fromFeeIdx: fromFeeIdx_,
@@ -2083,37 +2064,6 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
                     capture.hasTrace = true;
                 }
                 capture.traceReasons = _incrementReasonCounts(capture.traceReasons, reasonCode_);
-                continue;
-            }
-
-            if (topic0 == PERIOD_CLOSED_SIG) {
-                capture.counts.periodClosedCount += 1;
-                (
-                    uint24 fromFee_,
-                    uint8 fromFeeIdx_,
-                    uint24 toFee_,
-                    uint8 toFeeIdx_,
-                    uint64 periodVolume_,
-                    uint96 emaVolumeScaled_,
-                    uint64 approxLpFeesUsd_,
-                    uint8 reasonCode_
-                ) = abi.decode(logs[i].data, (uint24, uint8, uint24, uint8, uint64, uint96, uint64, uint8));
-
-                capture.lastPeriodClosed = PeriodClosedLog({
-                    fromFee: fromFee_,
-                    fromFeeIdx: fromFeeIdx_,
-                    toFee: toFee_,
-                    toFeeIdx: toFeeIdx_,
-                    periodVolume: periodVolume_,
-                    emaVolumeScaled: emaVolumeScaled_,
-                    approxLpFeesUsd: approxLpFeesUsd_,
-                    reasonCode: reasonCode_
-                });
-                if (!capture.hasPeriodClosed) {
-                    capture.firstPeriodClosed = capture.lastPeriodClosed;
-                    capture.hasPeriodClosed = true;
-                }
-                capture.periodClosedReasons = _incrementReasonCounts(capture.periodClosedReasons, reasonCode_);
                 continue;
             }
 
@@ -2150,53 +2100,6 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
         else if (reasonCode == hook.REASON_EMERGENCY_FLOOR()) counts.emergencyFloor += 1;
         else if (reasonCode == hook.REASON_NO_CHANGE()) counts.noChange += 1;
         return counts;
-    }
-
-    function _assertReasonTalliesAligned(ScenarioLogCapture memory capture) internal pure {
-        assertEq(
-            capture.traceReasons.noSwaps, capture.periodClosedReasons.noSwaps, "trace/close no-swaps mismatch"
-        );
-        assertEq(
-            capture.traceReasons.idleReset,
-            capture.periodClosedReasons.idleReset,
-            "trace/close idle-reset mismatch"
-        );
-        assertEq(
-            capture.traceReasons.emaBootstrap,
-            capture.periodClosedReasons.emaBootstrap,
-            "trace/close bootstrap mismatch"
-        );
-        assertEq(
-            capture.traceReasons.jumpCash,
-            capture.periodClosedReasons.jumpCash,
-            "trace/close jump-cash mismatch"
-        );
-        assertEq(
-            capture.traceReasons.jumpExtreme,
-            capture.periodClosedReasons.jumpExtreme,
-            "trace/close jump-extreme mismatch"
-        );
-        assertEq(
-            capture.traceReasons.downToCash,
-            capture.periodClosedReasons.downToCash,
-            "trace/close down-to-cash mismatch"
-        );
-        assertEq(
-            capture.traceReasons.downToFloor,
-            capture.periodClosedReasons.downToFloor,
-            "trace/close down-to-floor mismatch"
-        );
-        assertEq(capture.traceReasons.hold, capture.periodClosedReasons.hold, "trace/close hold mismatch");
-        assertEq(
-            capture.traceReasons.emergencyFloor,
-            capture.periodClosedReasons.emergencyFloor,
-            "trace/close emergency mismatch"
-        );
-        assertEq(
-            capture.traceReasons.noChange,
-            capture.periodClosedReasons.noChange,
-            "trace/close no-change mismatch"
-        );
     }
 
     function _scenarioPeriods(Scenario scenario) internal view returns (uint64) {

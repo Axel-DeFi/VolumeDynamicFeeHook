@@ -196,15 +196,13 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     uint16 internal constant TRACE_FLAG_EXTREME_EXIT_TRIGGER = 0x0040;
     uint16 internal constant TRACE_FLAG_CASH_EXIT_TRIGGER = 0x0080;
 
-    bytes32 internal constant CONTROLLER_TRANSITION_TRACE_TOPIC = keccak256(
-        "ControllerTransitionTrace(uint64,uint24,uint8,uint24,uint8,uint64,uint96,uint96,uint64,uint16,uint16,uint16,uint8)"
+    bytes32 internal constant PERIOD_TRACE_TOPIC = keccak256(
+        "PeriodTrace(uint64,uint24,uint8,uint24,uint8,uint64,uint96,uint96,uint64,uint16,uint16,uint16,uint8)"
     );
-    bytes32 internal constant PERIOD_CLOSED_TOPIC =
-        keccak256("PeriodClosed(uint24,uint8,uint24,uint8,uint64,uint96,uint64,uint8)");
     bytes32 internal constant FEE_UPDATED_TOPIC = keccak256("FeeUpdated(uint24,uint8,uint64,uint96)");
     bytes32 internal constant IDLE_RESET_TOPIC = keccak256("IdleReset(uint24,uint8)");
 
-    struct ControllerTransitionTraceLog {
+    struct PeriodTraceLog {
         uint64 periodStart;
         uint24 fromFee;
         uint8 fromFeeIdx;
@@ -220,17 +218,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint8 reasonCode;
     }
 
-    struct PeriodClosedLog {
-        uint24 fromFee;
-        uint8 fromFeeIdx;
-        uint24 toFee;
-        uint8 toFeeIdx;
-        uint64 periodVolume;
-        uint96 emaVolumeScaled;
-        uint64 approxLpFeesUsd;
-        uint8 reasonCode;
-    }
-
     struct FeeUpdatedLog {
         uint24 fee;
         uint8 feeIdx;
@@ -240,11 +227,9 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
 
     struct SwapEventCapture {
         uint256 traceCount;
-        uint256 periodClosedCount;
         uint256 feeUpdatedCount;
         uint256 idleResetCount;
-        ControllerTransitionTraceLog lastTrace;
-        PeriodClosedLog lastPeriodClosed;
+        PeriodTraceLog lastTrace;
         FeeUpdatedLog lastFeeUpdated;
     }
 
@@ -428,7 +413,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             if (entries[i].topics.length == 0) continue;
 
             bytes32 topic0 = entries[i].topics[0];
-            if (topic0 == CONTROLLER_TRANSITION_TRACE_TOPIC) {
+            if (topic0 == PERIOD_TRACE_TOPIC) {
                 capture.traceCount += 1;
                 (
                     uint64 periodStart_,
@@ -462,7 +447,7 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
                         uint8
                     )
                 );
-                capture.lastTrace = ControllerTransitionTraceLog({
+                capture.lastTrace = PeriodTraceLog({
                     periodStart: periodStart_,
                     fromFee: fromFee_,
                     fromFeeIdx: fromFeeIdx_,
@@ -475,31 +460,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
                     decisionBits: decisionBits_,
                     stateBitsBefore: stateBitsBefore_,
                     stateBitsAfter: stateBitsAfter_,
-                    reasonCode: reasonCode_
-                });
-                continue;
-            }
-
-            if (topic0 == PERIOD_CLOSED_TOPIC) {
-                capture.periodClosedCount += 1;
-                (
-                    uint24 fromFee_,
-                    uint8 fromFeeIdx_,
-                    uint24 toFee_,
-                    uint8 toFeeIdx_,
-                    uint64 periodVolume_,
-                    uint96 emaVolumeScaled_,
-                    uint64 approxLpFeesUsd_,
-                    uint8 reasonCode_
-                ) = abi.decode(entries[i].data, (uint24, uint8, uint24, uint8, uint64, uint96, uint64, uint8));
-                capture.lastPeriodClosed = PeriodClosedLog({
-                    fromFee: fromFee_,
-                    fromFeeIdx: fromFeeIdx_,
-                    toFee: toFee_,
-                    toFeeIdx: toFeeIdx_,
-                    periodVolume: periodVolume_,
-                    emaVolumeScaled: emaVolumeScaled_,
-                    approxLpFeesUsd: approxLpFeesUsd_,
                     reasonCode: reasonCode_
                 });
                 continue;
@@ -670,7 +630,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
     function test_controllerTransitionTrace_normal_close_without_transition() public {
         SwapEventCapture memory openCapture = _captureCountedSwap(SEED_CLOSEVOL_USD6);
         assertEq(openCapture.traceCount, 0, "trace must not emit on open-period swaps");
-        assertEq(openCapture.periodClosedCount, 0, "PeriodClosed must not emit on open-period swaps");
         assertEq(openCapture.feeUpdatedCount, 0, "FeeUpdated must not emit on open-period swaps");
         assertEq(openCapture.idleResetCount, 0, "IdleReset must not emit on open-period swaps");
 
@@ -688,7 +647,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint64 approxLpFees = _expectedApproxLpFees(SEED_CLOSEVOL_USD6, hook.floorFee());
 
         assertEq(capture.traceCount, 1, "trace must emit once on period close");
-        assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 0, "FeeUpdated must not emit without transition");
         assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
@@ -706,15 +664,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 0, 0, 0, 0));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_NO_CHANGE());
 
-        assertEq(capture.lastPeriodClosed.fromFee, hook.floorFee());
-        assertEq(capture.lastPeriodClosed.fromFeeIdx, hook.MODE_FLOOR());
-        assertEq(capture.lastPeriodClosed.toFee, hook.floorFee());
-        assertEq(capture.lastPeriodClosed.toFeeIdx, hook.MODE_FLOOR());
-        assertEq(capture.lastPeriodClosed.periodVolume, SEED_CLOSEVOL_USD6);
-        assertEq(capture.lastPeriodClosed.emaVolumeScaled, emaAfter);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, approxLpFees);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_NO_CHANGE());
-
         assertEq(hook.currentMode(), hook.MODE_FLOOR(), "fee mode must stay floor");
         assertEq(manager.lastFee(), hook.floorFee(), "active fee must stay floor");
     }
@@ -731,7 +680,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint64 approxLpFees = _expectedApproxLpFees(CASH_JUMP_CLOSEVOL_USD6, hook.floorFee());
 
         assertEq(capture.traceCount, 1, "trace must emit once on jump to cash");
-        assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on transition");
         assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
@@ -748,13 +696,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, 0, 0, 0, 0));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, hook.holdCashPeriods(), 0, 0, 0));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_JUMP_CASH());
-
-        assertEq(capture.lastPeriodClosed.fromFee, hook.floorFee());
-        assertEq(capture.lastPeriodClosed.toFee, hook.cashFee());
-        assertEq(capture.lastPeriodClosed.periodVolume, CASH_JUMP_CLOSEVOL_USD6);
-        assertEq(capture.lastPeriodClosed.emaVolumeScaled, emaAfter);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, approxLpFees);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_JUMP_CASH());
 
         assertEq(capture.lastFeeUpdated.fee, hook.cashFee());
         assertEq(capture.lastFeeUpdated.feeIdx, hook.MODE_CASH());
@@ -783,7 +724,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint64 approxLpFees = _expectedApproxLpFees(EXTREME_STREAK2_CLOSEVOL_USD6, hook.cashFee());
 
         assertEq(capture.traceCount, 1, "trace must emit once on jump to extreme");
-        assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on transition");
         assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
@@ -802,13 +742,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             capture.lastTrace.stateBitsAfter, _packTraceCounters(false, hook.holdExtremePeriods(), 0, 0, 0)
         );
         assertEq(capture.lastTrace.reasonCode, hook.REASON_JUMP_EXTREME());
-
-        assertEq(capture.lastPeriodClosed.fromFee, hook.cashFee());
-        assertEq(capture.lastPeriodClosed.toFee, hook.extremeFee());
-        assertEq(capture.lastPeriodClosed.periodVolume, EXTREME_STREAK2_CLOSEVOL_USD6);
-        assertEq(capture.lastPeriodClosed.emaVolumeScaled, emaAfter);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, approxLpFees);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_JUMP_EXTREME());
 
         assertEq(capture.lastFeeUpdated.fee, hook.extremeFee());
         assertEq(capture.lastFeeUpdated.feeIdx, hook.MODE_EXTREME());
@@ -829,7 +762,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint96 emaAfter = _expectedUpdatedEma(emaBefore, 0);
 
         assertEq(capture.traceCount, 1, "trace must emit once on hold-blocked close");
-        assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 0, "FeeUpdated must not emit when hold keeps cash");
         assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
@@ -846,13 +778,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, hook.holdCashPeriods(), 0, 0, 0));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 1, 0, 0, 1));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_HOLD());
-
-        assertEq(capture.lastPeriodClosed.fromFee, hook.cashFee());
-        assertEq(capture.lastPeriodClosed.toFee, hook.cashFee());
-        assertEq(capture.lastPeriodClosed.periodVolume, 0);
-        assertEq(capture.lastPeriodClosed.emaVolumeScaled, emaAfter);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, 0);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_HOLD());
 
         assertEq(hook.currentMode(), hook.MODE_CASH(), "fee mode must stay cash under hold");
         assertEq(manager.lastFee(), hook.cashFee(), "active fee must stay cash");
@@ -882,7 +807,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         uint96 emaAfter = _expectedUpdatedEma(emaBefore, 0);
 
         assertEq(capture.traceCount, 1, "trace must emit once on emergency floor transition");
-        assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on emergency floor");
         assertEq(capture.idleResetCount, 0, "IdleReset must not emit on normal close");
 
@@ -899,13 +823,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, 0, 0, 4, 5));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 0, 0, 0, 0));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_EMERGENCY_FLOOR());
-
-        assertEq(capture.lastPeriodClosed.fromFee, hook.cashFee());
-        assertEq(capture.lastPeriodClosed.toFee, hook.floorFee());
-        assertEq(capture.lastPeriodClosed.periodVolume, 0);
-        assertEq(capture.lastPeriodClosed.emaVolumeScaled, emaAfter);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, 0);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_EMERGENCY_FLOOR());
 
         assertEq(capture.lastFeeUpdated.fee, hook.floorFee());
         assertEq(capture.lastFeeUpdated.feeIdx, hook.MODE_FLOOR());
@@ -954,11 +871,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
             V2_LOW_VOLUME_RESET_PERIODS,
             "catch-up should emit one trace per closed overdue period"
         );
-        assertEq(
-            capture.periodClosedCount,
-            V2_LOW_VOLUME_RESET_PERIODS,
-            "catch-up should emit PeriodClosed for each overdue period"
-        );
         assertEq(capture.feeUpdatedCount, 1, "emergency floor should sync LP fee once after catch-up");
         assertEq(capture.idleResetCount, 0, "catch-up below idle reset must not emit IdleReset");
 
@@ -976,12 +888,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, 0, 0, 4, 5));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 0, 0, 0, 0));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_EMERGENCY_FLOOR());
-
-        assertEq(capture.lastPeriodClosed.fromFee, hook.extremeFee());
-        assertEq(capture.lastPeriodClosed.toFee, hook.floorFee());
-        assertEq(capture.lastPeriodClosed.periodVolume, 0);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, 0);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_EMERGENCY_FLOOR());
 
         (
             uint8 feeIdxAfterCatchUp,
@@ -1014,7 +920,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         SwapEventCapture memory capture = _captureZeroSwap();
 
         assertEq(capture.traceCount, 1, "trace must emit once on idle reset");
-        assertEq(capture.periodClosedCount, 1, "PeriodClosed must still emit");
         assertEq(capture.feeUpdatedCount, 1, "FeeUpdated must still emit on idle fee reset");
         assertEq(capture.idleResetCount, 1, "IdleReset must still emit");
 
@@ -1031,13 +936,6 @@ contract VolumeDynamicFeeHookAdminTest is Test, VolumeDynamicFeeHookV2DeployHelp
         assertEq(capture.lastTrace.stateBitsBefore, _packTraceCounters(false, hook.holdCashPeriods(), 0, 0, 0));
         assertEq(capture.lastTrace.stateBitsAfter, _packTraceCounters(false, 0, 0, 0, 0));
         assertEq(capture.lastTrace.reasonCode, hook.REASON_IDLE_RESET());
-
-        assertEq(capture.lastPeriodClosed.fromFee, hook.cashFee());
-        assertEq(capture.lastPeriodClosed.toFee, hook.floorFee());
-        assertEq(capture.lastPeriodClosed.periodVolume, 0);
-        assertEq(capture.lastPeriodClosed.emaVolumeScaled, 0);
-        assertEq(capture.lastPeriodClosed.approxLpFeesUsd, 0);
-        assertEq(capture.lastPeriodClosed.reasonCode, hook.REASON_IDLE_RESET());
 
         assertEq(capture.lastFeeUpdated.fee, hook.floorFee());
         assertEq(capture.lastFeeUpdated.feeIdx, hook.MODE_FLOOR());

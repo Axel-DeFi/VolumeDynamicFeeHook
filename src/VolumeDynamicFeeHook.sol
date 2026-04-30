@@ -209,26 +209,14 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
     /// @notice Emitted when active LP fee tier changes.
     event FeeUpdated(uint24 fee, uint8 feeIdx, uint64 periodVolume, uint96 emaVolumeScaled);
 
-    /// @notice Emitted for each period-close transition.
-    event PeriodClosed(
-        uint24 fromFee,
-        uint8 fromFeeIdx,
-        uint24 toFee,
-        uint8 toFeeIdx,
-        uint64 periodVolume,
-        uint96 emaVolumeScaled,
-        uint64 approxLpFeesUsd,
-        uint8 reasonCode
-    );
-
-    /// @notice Emitted alongside `PeriodClosed` with compact controller diagnostics for the closed period.
+    /// @notice Emitted on every period close.
     /// @dev `stateBitsBefore` / `stateBitsAfter` pack:
     /// bit 0 paused, bits 1..4 holdRemaining, bits 5..7 upExtremeStreak, bits 8..11 downStreak,
     /// bits 12..15 emergencyStreak.
     /// @dev `decisionBits` packs:
     /// bit 0 bootstrapV2, bit 2 holdWasActive, bit 3 emergencyTriggered,
     /// bit 4 cashEnterTrigger, bit 5 extremeEnterTrigger, bit 6 extremeExitTrigger, bit 7 cashExitTrigger.
-    event ControllerTransitionTrace(
+    event PeriodTrace(
         uint64 periodStart,
         uint24 fromFee,
         uint8 fromFeeIdx,
@@ -1700,7 +1688,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         return uint64(fees);
     }
 
-    /// @notice Emits both `PeriodClosed` and `ControllerTransitionTrace` for a closed period.
+    /// @notice Emits `PeriodTrace` for a closed period.
     function _emitPeriodTrace(
         uint64 periodStart,
         uint24 fromFee,
@@ -1716,17 +1704,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
         uint16 stateBitsAfter,
         uint8 reasonCode
     ) internal {
-        emit PeriodClosed(
-            fromFee,
-            fromFeeIdx,
-            toFee,
-            toFeeIdx,
-            periodVolume,
-            emaVolumeAfter,
-            approxLpFeesUsd,
-            reasonCode
-        );
-        emit ControllerTransitionTrace(
+        emit PeriodTrace(
             periodStart,
             fromFee,
             fromFeeIdx,
