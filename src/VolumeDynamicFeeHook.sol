@@ -1945,10 +1945,7 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             } else {
                 result.upExtremeStreak = 0;
             }
-            if (
-                !bootstrapV2 && result.upExtremeStreak >= _config.enterExtremeConfirmPeriods
-                    && result.feeIdx != MODE_EXTREME
-            ) {
+            if (!bootstrapV2 && result.upExtremeStreak >= _config.enterExtremeConfirmPeriods) {
                 result.feeIdx = MODE_EXTREME;
                 result.holdRemaining = _config.holdExtremePeriods;
                 result.upExtremeStreak = 0;
@@ -1986,11 +1983,9 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             }
             if (result.downStreak >= _config.exitExtremeConfirmPeriods) {
                 result.downStreak = 0;
-                if (result.feeIdx != MODE_CASH) {
-                    result.feeIdx = MODE_CASH;
-                    result.reasonCode = REASON_DOWN_TO_CASH;
-                    return result;
-                }
+                result.feeIdx = MODE_CASH;
+                result.reasonCode = REASON_DOWN_TO_CASH;
+                return result;
             }
         } else if (result.feeIdx == MODE_CASH) {
             bool downCashPass = ratioPct <= uint256(_config.exitCashEmaRatioPct);
@@ -2001,11 +1996,9 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
             }
             if (result.downStreak >= _config.exitCashConfirmPeriods) {
                 result.downStreak = 0;
-                if (result.feeIdx != MODE_FLOOR) {
-                    result.feeIdx = MODE_FLOOR;
-                    result.reasonCode = REASON_DOWN_TO_FLOOR;
-                    return result;
-                }
+                result.feeIdx = MODE_FLOOR;
+                result.reasonCode = REASON_DOWN_TO_FLOOR;
+                return result;
             }
         } else {
             result.downStreak = 0;
