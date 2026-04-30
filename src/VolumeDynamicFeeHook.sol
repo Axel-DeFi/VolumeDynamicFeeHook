@@ -1916,16 +1916,13 @@ contract VolumeDynamicFeeHook is BaseHook, IUnlockCallback {
 
         if (result.feeIdx == MODE_FLOOR) {
             uint256 cashThreshold = uint256(_config.enterCashEmaRatioPct);
-            bool cashEnterTriggered = ratioPct >= cashThreshold;
+            bool cashEnterTriggered =
+                periodVolume >= _config.enterCashMinVolume && ratioPct >= cashThreshold;
             if (cashEnterTriggered) {
                 result.decisionBits |= TRACE_FLAG_CASH_ENTER_TRIGGER;
             }
-            bool canJumpCash =
-                !bootstrapV2
-                    && emaVolScaled != 0
-                    && periodVolume >= _config.enterCashMinVolume
-                    && cashEnterTriggered;
-            if (canJumpCash && result.feeIdx != MODE_CASH) {
+            bool canJumpCash = !bootstrapV2 && emaVolScaled != 0 && cashEnterTriggered;
+            if (canJumpCash) {
                 result.feeIdx = MODE_CASH;
                 result.holdRemaining = _config.holdCashPeriods;
                 result.upExtremeStreak = 0;
