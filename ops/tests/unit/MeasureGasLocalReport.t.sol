@@ -1058,7 +1058,6 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     function _assertNormalSwap(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
         (uint64 periodVolume,, uint64 periodStart, uint8 feeIdx) = hook.unpackedState();
         assertEq(counts.traceCount, 0, "normal swap must not close a period");
-        assertEq(counts.traceCount, 0, "normal swap must not emit a transition trace");
         assertEq(counts.idleResetCount, 0, "normal swap must not idle reset");
         assertEq(counts.feeUpdatedCount, 0, "normal swap must not update LP fee");
         assertEq(counts.claimCount, 0, "normal swap must not claim HookFee");
@@ -1071,7 +1070,6 @@ contract MeasureGasLocalReportTest is Test, GasMeasurementLocalBase {
     function _assertClaimHookFeesOneChunk(LogCounts memory counts, CounterSnapshot memory snapshot) internal view {
         (uint256 fees0After, uint256 fees1After) = hook.hookFeesAccrued();
         assertEq(counts.traceCount, 0, "one-chunk claim must not close a period");
-        assertEq(counts.traceCount, 0, "one-chunk claim must not emit transition traces");
         assertEq(counts.idleResetCount, 0, "one-chunk claim must not idle reset");
         assertEq(counts.feeUpdatedCount, 0, "one-chunk claim must not update LP fee");
         assertEq(counts.claimCount, 1, "one-chunk claim must emit HookFeesClaimed once");
