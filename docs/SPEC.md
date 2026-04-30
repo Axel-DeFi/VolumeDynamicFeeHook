@@ -252,21 +252,15 @@ Bit-packing note:
 
 ## Approximate LP fee metric
 
-`PeriodClosed` emits:
-- `approxLpFeesUsd`
+The period-close event `PeriodTrace` emits `approxLpFeesUsd`. This metric is
+approximate telemetry only, not accounting-grade LP revenue.
 
-This metric is approximate telemetry only, not accounting-grade LP revenue.
+## Period close trace
 
-## Period-close diagnostics
-
-`ControllerTransitionTrace` is emitted as a compact telemetry companion to `PeriodClosed`.
-It is an additive event only and does not replace `PeriodClosed` or `FeeUpdated`.
-
-Emission rules:
-- emits only on period-close path inside `_afterSwap()` and on the explicit idle-reset path,
-- does not emit for ordinary in-period swaps,
-- keeps existing event behavior unchanged:
-  `PeriodClosed` still emits for every close, `FeeUpdated` still emits only when active fee actually changes.
+`PeriodTrace` is emitted on every period close inside `_afterSwap()` and on
+the explicit idle-reset path. It is not emitted for ordinary in-period
+swaps. `FeeUpdated` continues to emit independently and only when the
+active fee tier actually changes.
 
 Field semantics:
 - `periodStart`: start timestamp of the period being closed. In multi-close catch-up, this advances by `periodSeconds` per closed period.
@@ -275,8 +269,8 @@ Field semantics:
 - `periodVolume`: counted volume of the closed period (`0` for zero-volume catch-up closes and idle reset).
 - `emaVolumeBefore`: EMA before `_updateEmaScaled(...)`.
 - `emaVolumeAfter`: EMA immediately after `_updateEmaScaled(...)`. This is still non-zero for ordinary zero-volume closes; only idle reset forces it to `0`.
-- `approxLpFeesUsd`: same approximate telemetry metric as `PeriodClosed`, based on `fromFee`.
-- `reasonCode`: unchanged controller reason code already used by `PeriodClosed`.
+- `approxLpFeesUsd`: approximate LP fees telemetry for the closed period, computed against `fromFee`.
+- `reasonCode`: controller reason code for the close decision.
 
 Compact counter packing:
 - `stateBitsBefore` and `stateBitsAfter` use:
